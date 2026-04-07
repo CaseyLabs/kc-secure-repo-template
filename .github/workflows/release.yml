@@ -1,0 +1,61 @@
+# Build release artifacts on version tags and attach provenance to the result.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  attestations: write
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Load release config
+        env:
+          VAR_ENABLE_SBOM: ${{ vars.ENABLE_SBOM }}
+          VAR_ENABLE_GRYPE: ${{ vars.ENABLE_GRYPE }}
+          VAR_GRYPE_FAIL_ON: ${{ vars.GRYPE_FAIL_ON }}
+        run: |
+          set -eu
+
+          read_config() {
+            key=$1
+            default=${2:-}
+            (
+              . ./project.env.example
+              eval "printf '%s' \"\${${key}:-${default}}\""
+            )
+          }
+
+          write_env() {
+            key=$1
+            value=$2
+            printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+          }
+
+          write_env ENABLE_SBOM "${VAR_ENABLE_SBOM:-$(read_config ENABLE_SBOM true)}"
+          write_env ENABLE_GRYPE "${VAR_ENABLE_GRYPE:-$(read_config ENABLE_GRYPE true)}"
+          write_env GRYPE_FAIL_ON "${VAR_GRYPE_FAIL_ON:-$(read_config GRYPE_FAIL_ON critical)}"
+      - name: Build release artifacts
+        run: PROJECT_ENV=project.env.example make dist
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: release-${{ github.ref_name }}
+          path: dist/
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: "dist/**"

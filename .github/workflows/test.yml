@@ -1,0 +1,23 @@
+# Run the template's test path and generated-repo smoke validation.
+name: test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Run tests
+        run: PROJECT_ENV=project.env.example make test
+      - name: Run generated-repo smoke tests
+        run: sh scripts/test.sh smoke
