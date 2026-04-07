@@ -59,21 +59,21 @@ make example    # Builds/tests/runs an example container
 ## Usage
 
 ```shell
-# Main Commands:
+# Main Commands
 make build    # builds the project as a container image
 make test     # run code linters and tests built container image
 make run      # runs the container
 make stop     # stops the contaner
 
-# Misc Commands:
+# Misc Commands
 make clean    # Removes all previously running containers
 make shell    # Opens a shell in the running container
 make status   # show the local image and running containers
 make logs     # show logs from running containers
-make update   # Updates the pinned SHA checksums
 make scan     # run security scans and workflow checks
-make dist     # build release artifacts
-make infra    # build/test/plan the Terraform config
+make update   # Updates the pinned SHA checksums in `./config/lockfile.env`
+make dist     # build release artifacts to `./dist`
+make infra    # build/test/plan the Terraform config from `./config/infra`
 ```
 
 ## Repository Layout
