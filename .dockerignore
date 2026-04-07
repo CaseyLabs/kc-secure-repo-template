@@ -1,0 +1,14 @@
+.git
+.agents
+.cache
+.tmp
+**/.terraform
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/crash.log
+dist
+**/dist
+node_modules
+coverage
