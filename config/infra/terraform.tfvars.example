@@ -1,0 +1,14 @@
+github_owner = "your-user-or-org"
+
+repository_name        = "example-secure-repository"
+repository_description = "Repository created and hardened by Terraform."
+repository_visibility  = "public"
+default_branch         = "main"
+
+repository_topics = [
+  "terraform",
+  "github",
+  "security",
+]
+
+required_status_checks = []
