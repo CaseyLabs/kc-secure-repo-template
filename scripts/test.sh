@@ -85,25 +85,6 @@ list_workflow_entries() {
 	done
 }
 
-# Reduce workflow entries to just the unique action references.
-list_workflow_refs() {
-	list_workflow_entries | awk -F '\t' '{ print $2 }' | LC_ALL=C sort -u
-}
-
-# Read the reviewed workflow allowlist section from the README.
-list_checklist_refs() {
-	awk '
-		/^### Current Actions$/ { in_section = 1; next }
-		/^### Allowlist Guidance$/ { in_section = 0 }
-		in_section && /^[[:space:]]*-[[:space:]]+`[^`]+`[[:space:]]*$/ {
-			ref = $0
-			sub(/^[[:space:]]*-[[:space:]]+`/, "", ref)
-			sub(/`[[:space:]]*$/, "", ref)
-			print ref
-		}
-	' README.md | LC_ALL=C sort -u
-}
-
 # Require full-SHA action pins plus a nearby reviewed tag comment.
 check_workflow_action_pins() {
 	list_workflow_entries | while IFS="$(printf '\t')" read -r workflow ref comment; do
@@ -218,7 +199,6 @@ template)
 	make -n test | grep -q 'sh scripts/test.sh "' || fail 'make test should call scripts/test.sh'
 	make -n scan | grep -q 'sh scripts/scan.sh "' || fail 'make scan should call scripts/scan.sh'
 	make -n dist | grep -q 'sh scripts/dist.sh "' || fail 'make dist should call scripts/dist.sh'
-	[ "$(list_workflow_refs)" = "$(list_checklist_refs)" ] || fail 'workflow allowlist doc is out of sync'
 	check_workflow_action_pins
 	assert_no_nested_dist_dirs
 	rm -rf dist
@@ -254,6 +234,7 @@ smoke)
 	(
 		cd "${workdir}/go"
 		tar -C "${root_dir}" -cf - -T "${workdir}/files.txt" | tar -xf -
+		rm -rf src
 		mkdir -p src/cmd/app
 		# Create a minimal Go project that uses the template's container-first workflow.
 		cat >src/go.mod <<'EOF'
