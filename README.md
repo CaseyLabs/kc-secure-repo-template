@@ -5,7 +5,7 @@
 ## Features
 
 - Nonroot containers for local development and CI workflows
-- Secret and vulnerability scanning
+- Secret and vulnerability scanning (including Git history)
 - GitHub Actions CI workflow templates
 - Terraform configs for creating new repos
 - AI Agentic Coding template files
@@ -45,6 +45,8 @@ cd kc-secure-repo-template
 cp project.env.example project.env
 make example    # Builds/tests/runs an example container
 ```
+
+`project.env` is for local configuration only. It is gitignored and excluded from Docker build contexts by default, so secrets should be injected at runtime rather than baked into images.
 
 ## Setup
 

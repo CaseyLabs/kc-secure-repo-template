@@ -120,17 +120,32 @@ case "${secret_scan_image}" in
 esac
 
 printf '\n==> Run secret scan\n'
-# Scan the whole repository tree without relying on Git metadata.
-docker run --rm --user "${docker_uid}:${docker_gid}" \
-	--cap-drop=ALL \
-	--security-opt=no-new-privileges:true \
-	-e HOME="${docker_home}" \
-	-e XDG_CACHE_HOME="${docker_cache_home}" \
-	-v "${docker_home_source}:${docker_home}" \
-	-v "${docker_tmpdir}:/tmp" \
-	-v "$(pwd):/repo" \
-	"${secret_scan_image}" \
-	detect --source /repo --no-git --no-banner --redact --exit-code 1
+# Prefer Git-aware scanning so removed-but-still-reachable secrets in history are caught.
+if [ -d .git ]; then
+	docker run --rm --user "${docker_uid}:${docker_gid}" \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges:true \
+		-e HOME="${docker_home}" \
+		-e XDG_CACHE_HOME="${docker_cache_home}" \
+		-v "${docker_home_source}:${docker_home}" \
+		-v "${docker_tmpdir}:/tmp" \
+		-v "$(pwd):/repo" \
+		-w /repo \
+		"${secret_scan_image}" \
+		detect --source /repo --no-banner --redact --exit-code 1
+else
+	# Fall back to plain filesystem scanning when Git metadata is unavailable.
+	docker run --rm --user "${docker_uid}:${docker_gid}" \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges:true \
+		-e HOME="${docker_home}" \
+		-e XDG_CACHE_HOME="${docker_cache_home}" \
+		-v "${docker_home_source}:${docker_home}" \
+		-v "${docker_tmpdir}:/tmp" \
+		-v "$(pwd):/repo" \
+		"${secret_scan_image}" \
+		detect --source /repo --no-git --no-banner --redact --exit-code 1
+fi
 
 printf '\n==> Run workflow lint\n'
 # Use actionlint in a container so CI and local runs use the same tool version.

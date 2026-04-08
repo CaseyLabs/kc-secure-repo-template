@@ -199,6 +199,7 @@ template)
 	make -n test | grep -q 'sh scripts/test.sh "' || fail 'make test should call scripts/test.sh'
 	make -n scan | grep -q 'sh scripts/scan.sh "' || fail 'make scan should call scripts/scan.sh'
 	make -n dist | grep -q 'sh scripts/dist.sh "' || fail 'make dist should call scripts/dist.sh'
+	grep -qx 'project.env' .dockerignore || fail '.dockerignore should exclude project.env from Docker build contexts'
 	check_workflow_action_pins
 	assert_no_nested_dist_dirs
 	rm -rf dist
