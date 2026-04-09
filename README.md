@@ -46,8 +46,6 @@ cp project.env.example project.env
 make example    # Builds/tests/runs an example container
 ```
 
-`project.env` is for local configuration only. It is gitignored and excluded from Docker build contexts by default, so secrets should be injected at runtime rather than baked into images.
-
 ## Setup
 
 - Place your source code into the `src/` folder

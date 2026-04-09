@@ -16,6 +16,7 @@ resource "github_repository" "repository" {
   has_wiki               = var.has_wiki
   has_discussions        = var.has_discussions
   allow_auto_merge       = var.allow_auto_merge
+  allow_update_branch    = var.allow_update_branch
   allow_merge_commit     = var.allow_merge_commit
   allow_squash_merge     = var.allow_squash_merge
   allow_rebase_merge     = var.allow_rebase_merge
@@ -41,9 +42,10 @@ resource "github_repository" "repository" {
 }
 
 resource "github_branch_default" "default" {
+  count      = var.default_branch == null ? 0 : 1
   repository = github_repository.repository.name
   branch     = var.default_branch
-  rename     = true
+  rename     = false
 }
 
 resource "github_repository_dependabot_security_updates" "repository" {
