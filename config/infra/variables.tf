@@ -27,9 +27,10 @@ variable "repository_visibility" {
 }
 
 variable "default_branch" {
-  description = "Default branch name."
+  description = "Default branch name to manage. Set to null to leave the repository's current default branch unchanged."
   type        = string
-  default     = "main"
+  default     = null
+  nullable    = true
 }
 
 variable "repository_topics" {
@@ -68,6 +69,12 @@ variable "allow_auto_merge" {
   default     = false
 }
 
+variable "allow_update_branch" {
+  description = "Always suggest updating pull request branches."
+  type        = bool
+  default     = true
+}
+
 variable "allow_merge_commit" {
   description = "Allow merge commits."
   type        = bool
@@ -83,7 +90,7 @@ variable "allow_squash_merge" {
 variable "allow_rebase_merge" {
   description = "Allow rebase merges."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "delete_branch_on_merge" {
@@ -119,13 +126,13 @@ variable "enable_secret_scanning_push_protection" {
 variable "required_approving_review_count" {
   description = "Required pull request approvals."
   type        = number
-  default     = 1
+  default     = 0
 }
 
 variable "dismiss_stale_reviews_on_push" {
   description = "Dismiss stale approvals when new commits are pushed."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "require_code_owner_review" {
@@ -143,7 +150,7 @@ variable "require_last_push_approval" {
 variable "required_review_thread_resolution" {
   description = "Require review threads to be resolved before merge."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "require_linear_history" {
@@ -161,7 +168,11 @@ variable "require_signed_commits" {
 variable "required_status_checks" {
   description = "Status checks to require before merge. Keep empty until the checks exist."
   type        = list(string)
-  default     = []
+  default = [
+    "build",
+    "test",
+    "scan",
+  ]
 }
 
 variable "strict_status_checks" {
@@ -173,7 +184,7 @@ variable "strict_status_checks" {
 variable "archive_on_destroy" {
   description = "Archive the repository instead of deleting it on destroy."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "ruleset_enforcement" {

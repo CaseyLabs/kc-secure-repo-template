@@ -15,6 +15,6 @@ output "repository_html_url" {
 }
 
 output "default_branch" {
-  description = "Configured default branch."
-  value       = github_branch_default.default.branch
+  description = "Configured default branch when managed, otherwise null."
+  value       = var.default_branch == null ? null : github_branch_default.default[0].branch
 }
