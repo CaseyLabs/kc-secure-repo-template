@@ -163,6 +163,36 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-pyflakes= \
 	.github/workflows/*.yml
 
+trivy_scan_image=${DEV_SCAN_TRIVY_IMAGE_LOCK}
+case "${trivy_scan_image}" in
+*@sha256:*) ;;
+*)
+	printf 'DEV_SCAN_TRIVY_IMAGE_LOCK must be pinned by digest\n' >&2
+	exit 1
+	;;
+esac
+
+printf '\n==> Run misconfiguration scan\n'
+# Trivy complements the other scanners by checking Dockerfile posture issues.
+docker run --rm --user "${docker_uid}:${docker_gid}" \
+	--cap-drop=ALL \
+	--security-opt=no-new-privileges:true \
+	-e HOME="${docker_home}" \
+	-e XDG_CACHE_HOME="${docker_cache_home}" \
+	-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
+	-v "${docker_home_source}:${docker_home}" \
+	-v "${docker_tmpdir}:/tmp" \
+	-v "$(pwd):/workspace" \
+	-w /workspace \
+	"${trivy_scan_image}" \
+	fs \
+	--scanners misconfig \
+	--misconfig-scanners dockerfile \
+	--severity HIGH,CRITICAL \
+	--exit-code 1 \
+	--skip-version-check \
+	/workspace
+
 printf '\n==> Check workflow pins\n'
 # Finally, verify that workflow action references stay fully pinned and documented.
 check_workflow_action_pins

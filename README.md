@@ -5,7 +5,7 @@
 ## Features
 
 - Nonroot containers for local development and CI workflows
-- Secret and vulnerability scanning (including Git history)
+- Secret, workflow, and Dockerfile misconfiguration scanning (including Git history)
 - GitHub Actions CI workflow templates
 - Terraform configs for creating new repos
 - AI Agentic Coding template files
@@ -72,7 +72,7 @@ make clean    # Removes all previously running containers
 make shell    # Opens a shell in the running container
 make status   # show the local image and running containers
 make logs     # show logs from running containers
-make scan     # run security scans and workflow checks
+make scan     # run secret scans, workflow checks, and Trivy Dockerfile scans
 make update   # Updates the pinned SHA checksums in `./config/lockfile.env`
 make dist     # build release artifacts to `./dist`
 make infra    # build/test/plan the Terraform config from `./config/infra`
@@ -90,6 +90,7 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
 ├── src/                      # Project source code (built into a container)
 ├── scripts/                  # Scripts used by the Makefile
 ├── config/
+│   ├── Dockerfile.scan       # Portable local repo secret and vulnerability scanner
 │   ├── lockfile.env          # Pinned SHA checksums for project tooling
 │   └── infra/                # Terraform example for GitHub repo hardening
 ├── .github/
@@ -97,3 +98,13 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
 └── .agents/
     └── skills/               # Repo-specific AI agent skills templates
 ```
+
+## Third-Party Tools
+
+This project uses the following open-source tools as part of its security scanning workflows:
+
+- [actionlint](https://github.com/rhysd/actionlint): lints GitHub Actions workflow files.
+- [gitleaks](https://github.com/gitleaks/gitleaks): scans the repository, including Git history when available, for leaked secrets.
+- [grype](https://github.com/anchore/grype): scans the generated SBOM for known vulnerabilities during release builds.
+- [syft](https://github.com/anchore/syft): generates SBOM output for release artifacts.
+- [trivy](https://github.com/aquasecurity/trivy): scans for Dockerfile misconfigurations in the repository.

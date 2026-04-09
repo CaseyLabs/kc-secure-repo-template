@@ -137,10 +137,10 @@ resolve_image() {
 # Resolve every reviewed image selector to the exact digest committed in the repo.
 dev_base_image_lock=$(resolve_image "${DEV_BASE_IMAGE}")
 dev_go_image_lock=$(resolve_image "${DEV_GO_IMAGE}")
-dev_node_image_lock=$(resolve_image "${DEV_NODE_IMAGE}")
 dev_terraform_image_lock=$(resolve_image "${DEV_TERRAFORM_IMAGE}")
 dev_scan_gitleaks_image_lock=$(resolve_image "${DEV_SCAN_GITLEAKS_IMAGE}")
 dev_scan_actionlint_image_lock=$(resolve_image "${DEV_SCAN_ACTIONLINT_IMAGE}")
+dev_scan_trivy_image_lock=$(resolve_image "${DEV_SCAN_TRIVY_IMAGE}")
 dev_scan_syft_image_lock=$(resolve_image "${DEV_SCAN_SYFT_IMAGE}")
 dev_scan_grype_image_lock=$(resolve_image "${DEV_SCAN_GRYPE_IMAGE}")
 
@@ -152,10 +152,10 @@ cat >config/lockfile.env <<EOF
 DEV_PACKAGE_SNAPSHOT_LOCK='${DEV_PACKAGE_SNAPSHOT_LOCK}'
 DEV_BASE_IMAGE_LOCK='${dev_base_image_lock}'
 DEV_GO_IMAGE_LOCK='${dev_go_image_lock}'
-DEV_NODE_IMAGE_LOCK='${dev_node_image_lock}'
 DEV_TERRAFORM_IMAGE_LOCK='${dev_terraform_image_lock}'
 DEV_SCAN_GITLEAKS_IMAGE_LOCK='${dev_scan_gitleaks_image_lock}'
 DEV_SCAN_ACTIONLINT_IMAGE_LOCK='${dev_scan_actionlint_image_lock}'
+DEV_SCAN_TRIVY_IMAGE_LOCK='${dev_scan_trivy_image_lock}'
 DEV_SCAN_SYFT_IMAGE_LOCK='${dev_scan_syft_image_lock}'
 DEV_SCAN_GRYPE_IMAGE_LOCK='${dev_scan_grype_image_lock}'
 EOF

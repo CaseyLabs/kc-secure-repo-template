@@ -2,8 +2,8 @@
 # base image and nonroot runtime setup in one place.
 ARG DEBIAN_APT_SNAPSHOT
 
-FROM hashicorp/terraform:1.14.8@sha256:42ecfb253183ec823646dd7859c5652039669409b44daa72abf57112e622849a AS terraform-cli
-FROM debian:bookworm-slim@sha256:4724b8cc51e33e398f0e2e15e18d5ec2851ff0c2280647e1310bc1642182655d AS dev-base
+FROM hashicorp/terraform:1.14.8:42ecfb253183ec823646dd7859c5652039669409b44daa72abf57112e622849a AS terraform-cli
+FROM debian:bookworm-slim:4724b8cc51e33e398f0e2e15e18d5ec2851ff0c2280647e1310bc1642182655d AS dev-base
 
 ARG DEBIAN_APT_SNAPSHOT
 
