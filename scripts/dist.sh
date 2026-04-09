@@ -33,14 +33,27 @@ docker_tmpdir=${DOCKER_TMPDIR:-$(pwd)/.cache/docker-tmp}
 mkdir -p "${docker_home_source}" "${docker_tmpdir}"
 
 printf '\n==> Build project image\n'
-# Build the main project image that knows how to create the release artifact.
-docker build \
-	--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
-	--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-	--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-	--target "${project_build_target}" \
-	-f "${project_dockerfile}" \
-	-t "${project_image}" .
+# GitHub Actions can opt into Buildx cache export/import without changing local defaults.
+if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
+	# shellcheck disable=SC2086
+	docker buildx build --load \
+		${DOCKER_BUILD_EXTRA_ARGS} \
+		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
+		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--target "${project_build_target}" \
+		-f "${project_dockerfile}" \
+		-t "${project_image}" .
+else
+	# Build the main project image that knows how to create the release artifact.
+	docker build \
+		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
+		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--target "${project_build_target}" \
+		-f "${project_dockerfile}" \
+		-t "${project_image}" .
+fi
 
 printf '\n==> Run release command\n'
 # Delegate the archive creation logic to the template helper script inside the container.

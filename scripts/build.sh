@@ -36,14 +36,27 @@ docker_tmpdir=${DOCKER_TMPDIR:-$(pwd)/.cache/docker-tmp}
 mkdir -p "${docker_home_source}" "${docker_tmpdir}"
 
 printf '\n==> Build src image\n'
-# Build the Go example image first; later steps run inside this container.
-docker build \
-	--build-arg DEV_BASE_IMAGE="${DEV_GO_IMAGE_LOCK}" \
-	--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-	--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-	--target dev \
-	-f Dockerfile \
-	-t "${src_image}" .
+# GitHub Actions can opt into Buildx cache export/import without changing local defaults.
+if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
+	# shellcheck disable=SC2086
+	docker buildx build --load \
+		${DOCKER_BUILD_EXTRA_ARGS} \
+		--build-arg DEV_BASE_IMAGE="${DEV_GO_IMAGE_LOCK}" \
+		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--target dev \
+		-f Dockerfile \
+		-t "${src_image}" .
+else
+	# Build the Go example image first; later steps run inside this container.
+	docker build \
+		--build-arg DEV_BASE_IMAGE="${DEV_GO_IMAGE_LOCK}" \
+		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--target dev \
+		-f Dockerfile \
+		-t "${src_image}" .
+fi
 
 printf '\n==> Build src workspace\n'
 # Run the actual application build inside the container so host toolchains are not required.

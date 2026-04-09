@@ -86,14 +86,27 @@ check_workflow_action_pins() {
 }
 
 printf '\n==> Build project image\n'
-# Build the main dev image before running syntax and template checks inside it.
-docker build \
-	--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
-	--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-	--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-	--target "${project_build_target}" \
-	-f "${project_dockerfile}" \
-	-t "${project_image}" .
+# GitHub Actions can opt into Buildx cache export/import without changing local defaults.
+if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
+	# shellcheck disable=SC2086
+	docker buildx build --load \
+		${DOCKER_BUILD_EXTRA_ARGS} \
+		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
+		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--target "${project_build_target}" \
+		-f "${project_dockerfile}" \
+		-t "${project_image}" .
+else
+	# Build the main dev image before running syntax and template checks inside it.
+	docker build \
+		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
+		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--target "${project_build_target}" \
+		-f "${project_dockerfile}" \
+		-t "${project_image}" .
+fi
 
 printf '\n==> Run lint, test, and build commands\n'
 # Syntax-check every shell script and regenerate the template manifest inside the container.
