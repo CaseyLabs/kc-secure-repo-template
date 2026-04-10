@@ -2,6 +2,20 @@
 
 **A security-hardened repository template for new GitHub projects.**
 
+<!-- TOC -->
+
+- [Features](#features)
+- [Example Output](#example-output)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Repository Layout](#repository-layout)
+- [Agentic AI Commands](#agentic-ai-commands)
+- [Third-Party Tools](#third-party-tools)
+
+<!-- /TOC -->
+
 ## Features
 
 - Nonroot containers for local development and CI workflows
@@ -13,7 +27,7 @@
 
 ## Example Output
 
-```shell
+```text
 > make example
 
 ==> Build summary
@@ -70,7 +84,7 @@ make clean    # Removes all previously running containers
 make shell    # Opens a shell in the running container
 make status   # show the local image and running containers
 make logs     # show logs from running containers
-make scan     # run secret scans, workflow checks, and Trivy Dockerfile scans
+make scan     # run security and secret
 make update   # Updates the pinned SHA checksums in `./config/lockfile.env`
 make dist     # build release artifacts to `./dist`
 make infra    # build/test/plan the Terraform config from `./config/infra`
@@ -95,6 +109,18 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
 │   └── workflows/            # GitHub Actions workflows
 └── .agents/
     └── skills/               # Repo-specific AI agent skills templates
+```
+
+## Agentic AI Commands
+
+This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
+
+Example commands:
+
+```text
+/review             # Performs a code review, based on the checklist in `code_review.md`
+
+$security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
 ```
 
 ## Third-Party Tools
