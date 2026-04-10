@@ -1,11 +1,41 @@
-# Keep GitHub Actions and Docker references moving through review in small batches.
+# Dependabot config
+# - Automatically checks for outdated dependencies and open pull requests to update them.
+
 version: 2
 updates:
+  # Check GitHub Actions used by this repo.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
+    # Control the commit message and PR title format that Dependabot uses.
+    commit-message:
+      prefix: "[Dependabot]"
+      # Include the dependency scope in the title/message when possible.
+      include: "scope"
+    # Group multiple lower-risk updates into a single PR
+    # - This reduces the number of Dependabot PRs you have to review.
+    # - Major updates stay separate, as they are more likely to introduce breaking changes and deserve their own review.
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Check Dockerfiles used by this repository.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "monthly"
+    commit-message:
+      prefix: "[Dependabot]"
+      include: "scope"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
