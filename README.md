@@ -84,7 +84,7 @@ make clean    # Removes all previously running containers
 make shell    # Opens a shell in the running container
 make status   # show the local image and running containers
 make logs     # show logs from running containers
-make scan     # run security and secret
+make scan     # run security and secret scanning
 make update   # Updates the pinned SHA checksums in `./config/lockfile.env`
 make dist     # build release artifacts to `./dist`
 make infra    # build/test/plan the Terraform config from `./config/infra`
@@ -102,7 +102,6 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
 ├── src/                      # Project source code (built into a container)
 ├── scripts/                  # Scripts used by the Makefile
 ├── config/
-│   ├── Dockerfile.scan       # Portable local repo secret and vulnerability scanner
 │   ├── lockfile.env          # Pinned SHA checksums for project tooling
 │   └── infra/                # Terraform example for GitHub repo hardening
 ├── .github/
