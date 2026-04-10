@@ -1,0 +1,4 @@
+interface:
+  display_name: "Security Review"
+  short_description: "Threat models and secure code review"
+  default_prompt: "Use $security-review to threat model this codebase and review it for security weaknesses."
