@@ -10,17 +10,17 @@ updates:
       interval: "monthly"
     # Control the commit message and PR title format that Dependabot uses.
     commit-message:
-      prefix: "[Dependabot]"
+      prefix: "[dependabot]"
       # Include the dependency scope in the title/message when possible.
       include: "scope"
-    # Group multiple lower-risk updates into a single PR
+    # Group GitHub Actions updates into a single PR.
     # - This reduces the number of Dependabot PRs you have to review.
-    # - Major updates stay separate, as they are more likely to introduce breaking changes and deserve their own review.
     groups:
-      minor-and-patch:
+      github-actions:
         patterns:
           - "*"
         update-types:
+          - "major"
           - "minor"
           - "patch"
 
@@ -30,10 +30,10 @@ updates:
     schedule:
       interval: "monthly"
     commit-message:
-      prefix: "[Dependabot]"
+      prefix: "[dependabot]"
       include: "scope"
     groups:
-      minor-and-patch:
+      dockerfile:
         patterns:
           - "*"
         update-types:
