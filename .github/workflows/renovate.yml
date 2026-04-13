@@ -26,7 +26,6 @@ jobs:
           permission-checks: write
           permission-statuses: write
           permission-contents: write
-          permission-issues: write
           permission-pull-requests: write
           permission-workflows: write
           permission-administration: read
