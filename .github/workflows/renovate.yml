@@ -1,5 +1,5 @@
 # Run self-hosted Renovate so dependency PRs can refresh generated lock values.
-name: renovate
+name: Renovate Upgrades (renovate.yml)
 
 on:
   workflow_dispatch:
@@ -26,7 +26,6 @@ jobs:
           permission-checks: write
           permission-statuses: write
           permission-contents: write
-          permission-issues: write
           permission-pull-requests: write
           permission-workflows: write
           permission-administration: read

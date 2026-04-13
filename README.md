@@ -142,7 +142,9 @@ _Note_: Renovate requires a GitHub App to be installed in order to operate. To c
 .github/renovate/setup-github-app.sh
 ```
 
-If you do not wish to use Renovate in your repo, set `DEV_SCAN_ENABLE_RENOVATE=false` in `config/project.cfg`.
+If you do not wish to use Renovate in your repo:
+
+- set `DEV_SCAN_ENABLE_RENOVATE=false` in `config/project.cfg`.
 
 ## Security Scanners
 

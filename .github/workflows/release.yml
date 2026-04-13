@@ -1,5 +1,5 @@
 # Build release artifacts on version tags and attach provenance to the result.
-name: release
+name: Release Code (release.yml)
 
 on:
   push:
