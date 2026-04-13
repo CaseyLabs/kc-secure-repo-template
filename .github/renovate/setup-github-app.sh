@@ -38,6 +38,11 @@ APP_DESCRIPTION="${APP_DESCRIPTION:-Renovate-Bot creates pull requests for tooli
 CALLBACK_HOST="${CALLBACK_HOST:-127.0.0.1}"
 CALLBACK_PORT="${CALLBACK_PORT:-8123}"
 CALLBACK_URL="http://${CALLBACK_HOST}:${CALLBACK_PORT}/callback"
+if [[ "${ACCOUNT_KIND}" == "org" ]]; then
+	POST_INSTALL_URL="${POST_INSTALL_URL:-https://github.com/organizations/${OWNER}/settings/installations}"
+else
+	POST_INSTALL_URL="${POST_INSTALL_URL:-https://github.com/settings/installations}"
+fi
 
 # Where to save a local copy for local-only/container runs.
 LOCAL_CONFIG_DIR="${LOCAL_CONFIG_DIR:-$HOME/.config/renovate}"
@@ -132,7 +137,7 @@ CALLBACK_FILE="${WORKDIR}/callback.txt"
 python3 "${WORKDIR}/callback_server.py" "${CALLBACK_HOST}" "${CALLBACK_PORT}" "${CALLBACK_FILE}" &
 SERVER_PID=$!
 
-export ACCOUNT_KIND APP_NAME APP_DESCRIPTION CALLBACK_URL
+export ACCOUNT_KIND APP_NAME APP_DESCRIPTION CALLBACK_URL POST_INSTALL_URL
 python3 - <<'PY' >"${WORKDIR}/manifest.json"
 import json
 import os
@@ -144,7 +149,7 @@ manifest = {
     "public": False,
     "redirect_url": os.environ["CALLBACK_URL"],
     "callback_urls": [os.environ["CALLBACK_URL"]],
-    "setup_url": "https://example.invalid/renovate/setup",
+    "setup_url": os.environ["POST_INSTALL_URL"],
     "hook_attributes": {
         "url": "https://example.invalid/renovate/webhook",
         "active": False
@@ -281,6 +286,12 @@ PY
 
 APP_ID="$(tr -d '\n' <"${LOCAL_APP_ID_FILE}")"
 CLIENT_ID="$(tr -d '\n' <"${LOCAL_CLIENT_ID_FILE}")"
+APP_SLUG=""
+INSTALL_URL=""
+if [[ -f "${LOCAL_APP_SLUG_FILE}" ]]; then
+	APP_SLUG="$(tr -d '\n' <"${LOCAL_APP_SLUG_FILE}")"
+	INSTALL_URL="https://github.com/apps/${APP_SLUG}/installations/new"
+fi
 
 echo "Writing repository variable: ${CLIENT_ID_VAR_NAME}"
 gh variable set "${CLIENT_ID_VAR_NAME}" \
@@ -314,6 +325,12 @@ echo "  Variable: ${CLIENT_ID_VAR_NAME}"
 echo "  Secret:   ${PRIVATE_KEY_SECRET_NAME}"
 echo
 echo "Next steps:"
-echo "1. Install the GitHub App on the target repo."
+if [[ -n "${INSTALL_URL}" ]]; then
+	echo "1. Install the GitHub App on the target repo:"
+	echo "   ${INSTALL_URL}"
+	echo "   Select: ${OWNER}/${REPO}"
+else
+	echo "1. Install the GitHub App on the target repo."
+fi
 echo "2. Commit the workflow and config files below."
 echo "3. Run the workflow manually once."
