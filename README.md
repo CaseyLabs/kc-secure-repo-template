@@ -11,6 +11,7 @@
 - [Setup](#setup)
 - [Usage](#usage)
 - [Repository Layout](#repository-layout)
+- [Dependency Updates](#dependency-updates)
 - [Agentic AI Commands](#agentic-ai-commands)
 - [Third-Party Tools](#third-party-tools)
 
@@ -32,7 +33,7 @@
 
 ==> Build summary
 Image: kc-secure-template-example:local
-Env File: ./project.env
+Project config: ./config/project.cfg
 Source Code: ./src
 Results:
   Container build: passed
@@ -56,7 +57,6 @@ In a Terminal, run the following:
 git clone --depth 1 https://github.com/CaseyLabs/kc-secure-repo-template
 cd kc-secure-repo-template
 
-cp project.env.example project.env
 make example    # Builds/tests/runs an example container
 ```
 
@@ -66,7 +66,7 @@ make example    # Builds/tests/runs an example container
 
 - Then customize the following files to fit your project/code base:
 
-  - `project.env`
+  - `config/project.cfg`
   - `Dockerfile`
   - `scripts/*.sh`
 
@@ -85,7 +85,7 @@ make shell    # Opens a shell in the running container
 make status   # show the local image and running containers
 make logs     # show logs from running containers
 make scan     # run security and secret scanning
-make update   # Updates the pinned SHA checksums in `./config/lockfile.env`
+make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
 make dist     # build release artifacts to `./dist`
 make infra    # build/test/plan the Terraform config from `./config/infra`
 ```
@@ -95,13 +95,13 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
 ```text
 .
 ├── AGENTS.md                 # Repo-specific AI agent guidance
-├── project.env               # Project environment variables
 ├── Makefile                  # For all `make` commands
 ├── Dockerfile                # Default nonroot dev/CI container image
 ├── src/                      # Project source code (built into a container)
 ├── scripts/                  # Scripts used by the Makefile
 ├── config/
-│   ├── lockfile.env          # Pinned SHA checksums for project tooling
+│   ├── project.cfg           # Project configuration
+│   ├── lockfile.cfg          # Pinned SHA checksums for project tooling
 │   └── infra/                # Terraform example for GitHub repo hardening
 ├── .github/
 │   └── workflows/            # GitHub Actions workflows
@@ -131,3 +131,18 @@ This project uses the following open-source tools as part of its security scanni
 - [grype](https://github.com/anchore/grype): scans the generated SBOM for known vulnerabilities during release builds.
 - [syft](https://github.com/anchore/syft): generates SBOM output for release artifacts.
 - [trivy](https://github.com/aquasecurity/trivy): scans for Dockerfile misconfigurations in the repository.
+
+### Optional: Renovate Tooling Upgrader
+
+Renovate is a third-party tool that can be installed as a GitHub App in your repo:
+
+- https://github.com/apps/renovate
+
+When installed, Renovate will scan the tooling versions in `config/project.cfg`, and create automatically create pull requests for new tool/image releases.
+
+- `.github/renovate.json` is configured to update tooling pins only in `config/project.cfg`
+- Renovate runs `make update` to ensure pinned tools in `config/lockfile.cfg` stay updated
+
+If you do not wish to use Renovate in your repo, set the following setting in `config/project.cfg`
+
+`DEV_SCAN_ENABLE_RENOVATE=false`

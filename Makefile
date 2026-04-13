@@ -1,5 +1,5 @@
 # Makefile
-PROJECT_ENV ?= project.env
+PROJECT_CFG_FILE ?= config/project.cfg
 PROJECT_NAME ?= kc-secure-template-dev
 PROJECT_IMAGE ?= $(PROJECT_NAME):local
 
@@ -12,40 +12,40 @@ help: ##@show available options
 	@awk 'BEGIN { FS = ":.*## " } /^[[:alnum:]_-]+:([^=]|$$).*## / { printf "  %-24s %s\n", $$1, $$2 }' $(lastword $(MAKEFILE_LIST))
 
 build: ## builds the project as a dev container image
-	sh scripts/build.sh "$(PROJECT_ENV)"
+	sh scripts/build.sh "$(PROJECT_CFG_FILE)"
 
 test: ## runs lint and tests against the built src image
-	sh scripts/test.sh "$(PROJECT_ENV)"
+	sh scripts/test.sh "$(PROJECT_CFG_FILE)"
 
 run: ## runs the built src container
-	sh scripts/run.sh "$(PROJECT_ENV)"
+	sh scripts/run.sh "$(PROJECT_CFG_FILE)"
 
 stop: ## stops the running src container
-	sh scripts/stop.sh "$(PROJECT_ENV)"
+	sh scripts/stop.sh "$(PROJECT_CFG_FILE)"
 
 status: ## shows the built image and running containers
-	sh scripts/status.sh "$(PROJECT_ENV)"
+	sh scripts/status.sh "$(PROJECT_CFG_FILE)"
 
 logs: ## prints logs from running containers
-	sh scripts/logs.sh "$(PROJECT_ENV)"
+	sh scripts/logs.sh "$(PROJECT_CFG_FILE)"
 
 clean: ## removes artifacts, caches, and the local container image
-	sh scripts/clean.sh "$(PROJECT_ENV)"
+	sh scripts/clean.sh "$(PROJECT_CFG_FILE)"
 
 shell: ## opens an shell in the running container
-	sh scripts/shell.sh "$(PROJECT_ENV)"
+	sh scripts/shell.sh "$(PROJECT_CFG_FILE)"
 
 update: ## refreshes pinned SHA hashes
-	sh scripts/update.sh "$(PROJECT_ENV)"
+	sh scripts/update.sh "$(PROJECT_CFG_FILE)"
 
 example: ## runs the bundled Hello World example project
-	sh scripts/example.sh "$(PROJECT_ENV)"
+	sh scripts/example.sh "$(PROJECT_CFG_FILE)"
 
 infra: ## builds/tests/plans the bundled infra workspace and applies it when APPLY=true
-	sh scripts/infra.sh "$(PROJECT_ENV)"
+	sh scripts/infra.sh "$(PROJECT_CFG_FILE)"
 
 scan: ## runs the template security scans and workflow checks
-	sh scripts/scan.sh "$(PROJECT_ENV)"
+	sh scripts/scan.sh "$(PROJECT_CFG_FILE)"
 
 dist: ## builds the template release artifacts and integrity outputs
-	sh scripts/dist.sh "$(PROJECT_ENV)"
+	sh scripts/dist.sh "$(PROJECT_CFG_FILE)"

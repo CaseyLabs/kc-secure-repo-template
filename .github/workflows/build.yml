@@ -21,4 +21,4 @@ jobs:
       - name: Build dev image
         env:
           DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=src-image --cache-to type=gha,scope=src-image,mode=max
-        run: PROJECT_ENV=project.env.example make build
+        run: PROJECT_CFG_FILE=config/project.cfg make build

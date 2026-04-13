@@ -3,15 +3,15 @@
 set -eu
 
 # Load the project config if it exists; `clean` still works with fallback defaults.
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
-case "${project_env}" in
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
-[ -f "${project_env}" ] && . "${project_env}"
+[ -f "${project_cfg_file}" ] && . "${project_cfg_file}"
 
-# Fall back to the template defaults so cleanup works before the user has copied project.env.
+# Fall back to the template defaults so cleanup still works if the config file is missing.
 case "${PROJECT_NAME:-kc-secure-template-dev}" in
 *-dev) src_name=${PROJECT_NAME%-dev}-example ;;
 *) src_name=${PROJECT_NAME:-kc-secure-template-dev}-example ;;

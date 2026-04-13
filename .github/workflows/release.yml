@@ -35,7 +35,7 @@ jobs:
             key=$1
             default=${2:-}
             (
-              . ./project.env.example
+              . ./config/project.cfg
               eval "printf '%s' \"\${${key}:-${default}}\""
             )
           }
@@ -50,11 +50,11 @@ jobs:
           write_env ENABLE_GRYPE "${VAR_ENABLE_GRYPE:-$(read_config ENABLE_GRYPE true)}"
           write_env GRYPE_FAIL_ON "${VAR_GRYPE_FAIL_ON:-$(read_config GRYPE_FAIL_ON critical)}"
       - name: Re-run test gate for tagged commit
-        run: PROJECT_ENV=project.env.example make test
+        run: PROJECT_CFG_FILE=config/project.cfg make test
       - name: Re-run security gate for tagged commit
-        run: PROJECT_ENV=project.env.example make scan
+        run: PROJECT_CFG_FILE=config/project.cfg make scan
       - name: Build release artifacts
-        run: PROJECT_ENV=project.env.example make dist
+        run: PROJECT_CFG_FILE=config/project.cfg make dist
       - name: Upload release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

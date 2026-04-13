@@ -22,4 +22,4 @@ jobs:
       - name: Run security scans
         env:
           DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=project-image --cache-to type=gha,scope=project-image,mode=max
-        run: PROJECT_ENV=project.env.example make scan
+        run: PROJECT_CFG_FILE=config/project.cfg make scan

@@ -11,7 +11,7 @@ src | template | smoke)
 	;;
 esac
 
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
 
 # Enumerate the files that belong in the shipped template archive.
 list_template_files() {
@@ -23,7 +23,6 @@ LICENSE.md
 Makefile
 README.md
 code_review.md
-project.env.example
 .dockerignore
 .gitignore
 .agents
@@ -123,13 +122,13 @@ assert_no_nested_dist_dirs() {
 case "${mode}" in
 src)
 	# Validate the default bundled Go example the same way a derived repo would.
-	PROJECT_ENV_PATH=${PROJECT_ENV}
-	case "${PROJECT_ENV_PATH}" in
+	PROJECT_CFG_FILE_PATH=${PROJECT_CFG_FILE}
+	case "${PROJECT_CFG_FILE_PATH}" in
 	/* | ./* | ../*) ;;
-	*) PROJECT_ENV_PATH="./${PROJECT_ENV_PATH}" ;;
+	*) PROJECT_CFG_FILE_PATH="./${PROJECT_CFG_FILE_PATH}" ;;
 	esac
-	[ -f "${PROJECT_ENV_PATH}" ] || fail "missing ${PROJECT_ENV_PATH}; copy project.env.example to ${PROJECT_ENV} first"
-	. "${PROJECT_ENV_PATH}"
+	[ -f "${PROJECT_CFG_FILE_PATH}" ] || fail "missing ${PROJECT_CFG_FILE_PATH}; set PROJECT_CFG_FILE to an existing config file"
+	. "${PROJECT_CFG_FILE_PATH}"
 
 	# The example image name is derived from the project name to avoid collisions.
 	case "${PROJECT_NAME}" in
@@ -140,7 +139,7 @@ src)
 
 	# Build the image on demand if the user runs tests from a clean checkout.
 	if ! docker image inspect "${src_image}" >/dev/null 2>&1; then
-		sh ./scripts/build.sh "${PROJECT_ENV}"
+		sh ./scripts/build.sh "${PROJECT_CFG_FILE}"
 	fi
 
 	# Match host ownership for bind-mounted caches and workspace files.
@@ -183,7 +182,7 @@ src)
 	printf '\n==> Test summary\n'
 	# Summaries make CI and local output easier to scan.
 	printf '%s\n' "Image: ${src_image}"
-	printf '%s\n' "Project env: ${PROJECT_ENV}"
+	printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"
 	printf '%s\n' 'Workspace: src'
 	printf '%s\n' 'Results: lint passed, tests passed'
 	;;
@@ -199,18 +198,19 @@ template)
 	make -n test | grep -q 'sh scripts/test.sh "' || fail 'make test should call scripts/test.sh'
 	make -n scan | grep -q 'sh scripts/scan.sh "' || fail 'make scan should call scripts/scan.sh'
 	make -n dist | grep -q 'sh scripts/dist.sh "' || fail 'make dist should call scripts/dist.sh'
-	grep -qx 'project.env' .dockerignore || fail '.dockerignore should exclude project.env from Docker build contexts'
+	! grep -qx 'config/project.cfg' .dockerignore || fail '.dockerignore should not exclude tracked config/project.cfg'
+	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
 	check_workflow_action_pins
 	assert_no_nested_dist_dirs
 	rm -rf dist
 	# `make example` should exercise the demo without leaving release artifacts behind.
-	PROJECT_ENV=project.env.example make example >/tmp/template-example.txt
+	PROJECT_CFG_FILE=config/project.cfg make example >/tmp/template-example.txt
 	[ ! -d dist ] || fail 'make example should not create root dist'
 	grep -q 'Run secret scan' /tmp/template-example.txt || fail 'make example should run the security scan'
 	assert_no_nested_dist_dirs
 	rm -rf .tmp
 	# Infra validation should also avoid writing release outputs.
-	PROJECT_ENV=project.env.example make infra >/tmp/template-infra.txt
+	PROJECT_CFG_FILE=config/project.cfg make infra >/tmp/template-infra.txt
 	[ ! -d dist ] || fail 'make infra should not create root dist'
 	assert_no_nested_dist_dirs
 	sh ./scripts/template.sh manifest
@@ -218,10 +218,10 @@ template)
 	list_template_files >/tmp/template-expected-manifest.txt
 	cmp -s /tmp/template-manifest.txt /tmp/template-expected-manifest.txt || fail 'template manifest is out of sync'
 	rm -rf dist
-	ENABLE_SBOM=false ENABLE_GRYPE=false make dist PROJECT_ENV=project.env.example >/dev/null
+	ENABLE_SBOM=false ENABLE_GRYPE=false make dist PROJECT_CFG_FILE=config/project.cfg >/dev/null
 	cp dist/kc-secure-repo-template.tar.gz /tmp/template-first.tar.gz
 	rm -rf dist
-	ENABLE_SBOM=false ENABLE_GRYPE=false make dist PROJECT_ENV=project.env.example >/dev/null
+	ENABLE_SBOM=false ENABLE_GRYPE=false make dist PROJECT_CFG_FILE=config/project.cfg >/dev/null
 	cp dist/kc-secure-repo-template.tar.gz /tmp/template-second.tar.gz
 	[ "$(sha256sum /tmp/template-first.tar.gz | awk '{print $1}')" = "$(sha256sum /tmp/template-second.tar.gz | awk '{print $1}')" ] || fail 'release archive should be reproducible'
 	;;
@@ -252,7 +252,7 @@ func main() {
 	fmt.Println("hello from go smoke test")
 }
 EOF
-		cat >project.env <<'EOF'
+		cat >config/project.cfg <<'EOF'
 DEV_BASE_IMAGE='golang:1.26.1-bookworm@sha256:09f72a3e4d00f209358f03b93e4d62e6ed45b786569c2d97e83cb7cbaaed15f2'
 DEV_PACKAGE_SNAPSHOT_LOCK='20260401T164506Z'
 DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f'
@@ -276,13 +276,13 @@ EOF
 #!/bin/sh
 set -eu
 
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
-case "${project_env}" in
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
-. "${project_env}"
+. "${project_cfg_file}"
 
 docker build \
 	--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
@@ -296,13 +296,13 @@ EOF
 #!/bin/sh
 set -eu
 
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
-case "${project_env}" in
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
-. "${project_env}"
+. "${project_cfg_file}"
 
 docker build \
 	--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
@@ -315,8 +315,8 @@ docker run --rm -v "$(pwd):/workspace" -w /workspace smoke-go:local \
 EOF
 		chmod +x scripts/scan.sh scripts/dist.sh
 		# The copied template should still be easy to adapt to a simple Go repository.
-		make scan PROJECT_ENV=project.env >/dev/null
-		make dist PROJECT_ENV=project.env >/dev/null
+		make scan PROJECT_CFG_FILE=config/project.cfg >/dev/null
+		make dist PROJECT_CFG_FILE=config/project.cfg >/dev/null
 		[ -d dist ] || fail 'make dist should create root dist'
 		[ ! -d src/dist ] || fail 'make dist should not create src/dist'
 		assert_no_nested_dist_dirs
@@ -325,7 +325,7 @@ EOF
 		cd "${workdir}/infra"
 		tar -C "${root_dir}" -cf - -T "${workdir}/files.txt" | tar -xf -
 		# Also verify the bundled infra workspace works in a fresh copied repository.
-		cat >project.env <<'EOF'
+		cat >config/project.cfg <<'EOF'
 DEV_BASE_IMAGE='debian:bookworm-slim@sha256:4724b8cc51e33e398f0e2e15e18d5ec2851ff0c2280647e1310bc1642182655d'
 DEV_PACKAGE_SNAPSHOT_LOCK='20260401T164506Z'
 DEV_TERRAFORM_IMAGE='hashicorp/terraform:1.14.8'
@@ -334,7 +334,7 @@ DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cb
 ENABLE_SBOM='false'
 ENABLE_GRYPE='false'
 EOF
-		make infra PROJECT_ENV=project.env >/dev/null
+		make infra PROJECT_CFG_FILE=config/project.cfg >/dev/null
 		[ ! -d dist ] || fail 'make infra should not create root dist'
 		assert_no_nested_dist_dirs
 	)

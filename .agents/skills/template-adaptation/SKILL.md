@@ -10,7 +10,7 @@ Use this skill when adapting this repository template to a new derived project.
 ## Use this skill when
 - initializing a new derived repository from this template
 - adapting the template for a Go, Node.js, SQL, or small polyglot project
-- changing `project.env`, `Dockerfile`, `Makefile`, `scripts/`, or default project scaffolding
+- changing `config/project.cfg`, `Dockerfile`, `Makefile`, `scripts/`, or default project scaffolding
 - changing the default customization surface for derived repositories
 
 ## Do not use this skill when
@@ -29,7 +29,7 @@ Use this skill when adapting this repository template to a new derived project.
 ## Method
 - Treat `Makefile` as the primary user-facing interface.
 - Treat `scripts/` as implementation details.
-- Treat `project.env` as the main customization point for project-specific commands and settings.
+- Treat `config/project.cfg` as the main customization point for project-specific commands and settings.
 - Keep changes small and reviewable.
 - Prefer optional language-specific extensions over baking language-specific logic into the generic template.
 - For Terraform-backed GitHub hardening changes under `config/infra`, use `template-infra-hardening` instead.

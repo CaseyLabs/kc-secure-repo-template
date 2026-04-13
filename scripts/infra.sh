@@ -3,20 +3,20 @@
 set -eu
 
 # Resolve and validate the chosen project configuration file.
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
-case "${project_env}" in
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
 # Infra validation needs a real config because it depends on pinned image values.
-[ -f "${project_env}" ] || {
-	printf 'missing %s; copy project.env.example to %s first\n' "${project_env}" "${PROJECT_ENV}" >&2
+[ -f "${project_cfg_file}" ] || {
+	printf 'missing %s; set PROJECT_CFG_FILE to an existing config file\n' "${project_cfg_file}" >&2
 	exit 1
 }
 
 # Load image locks and Terraform selectors.
-. "${project_env}"
+. "${project_cfg_file}"
 
 apply=${APPLY:-false}
 infra_image='kc-secure-template-infra:local'

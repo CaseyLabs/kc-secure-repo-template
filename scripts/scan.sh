@@ -3,20 +3,20 @@
 set -eu
 
 # Resolve the project config file from argv or the environment.
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
-case "${project_env}" in
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
 # Refuse to continue without the reviewed project configuration.
-[ -f "${project_env}" ] || {
-	printf 'missing %s; copy project.env.example to %s first\n' "${project_env}" "${PROJECT_ENV}" >&2
+[ -f "${project_cfg_file}" ] || {
+	printf 'missing %s; set PROJECT_CFG_FILE to an existing config file\n' "${project_cfg_file}" >&2
 	exit 1
 }
 
 # Load build settings and pinned scanner image references.
-. "${project_env}"
+. "${project_cfg_file}"
 
 # Allow derived repositories to change the image name, Dockerfile, or build target.
 project_image=${PROJECT_IMAGE:-kc-secure-template-dev:local}
