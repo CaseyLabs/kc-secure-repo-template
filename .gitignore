@@ -7,7 +7,6 @@ dist/
 crash.log
 .cache/
 .tmp/
-project.env
 node_modules/
 coverage/
 .DS_Store

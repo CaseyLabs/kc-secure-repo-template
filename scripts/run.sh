@@ -3,14 +3,14 @@
 set -eu
 
 # Resolve the project configuration file from the first argument or environment.
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
-case "${project_env}" in
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
 # Load image names and other settings used to start the example app.
-. "${project_env}"
+. "${project_cfg_file}"
 
 # Build the example container name from the configured project name.
 case "${PROJECT_NAME}" in
@@ -22,7 +22,7 @@ container_name="${src_name}-run"
 
 # Auto-build the image so `make run` works even if the user skipped `make build`.
 if ! docker image inspect "${src_image}" >/dev/null 2>&1; then
-	sh ./scripts/build.sh "${PROJECT_ENV}"
+	sh ./scripts/build.sh "${PROJECT_CFG_FILE}"
 fi
 
 # Reuse the current host user's uid/gid for writable bind mounts.

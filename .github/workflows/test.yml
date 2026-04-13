@@ -21,7 +21,7 @@ jobs:
       - name: Run tests
         env:
           DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=src-image --cache-to type=gha,scope=src-image,mode=max
-        run: PROJECT_ENV=project.env.example make test
+        run: PROJECT_CFG_FILE=config/project.cfg make test
       - name: Run generated-repo smoke tests
         env:
           DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=smoke-image --cache-to type=gha,scope=smoke-image,mode=max

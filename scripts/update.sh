@@ -1,6 +1,18 @@
 #!/bin/sh
-# shellcheck shell=sh disable=SC1091
+# shellcheck shell=sh disable=SC1090
 set -eu
+
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
+/* | ./* | ../*) ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
+esac
+
+[ -f "${project_cfg_file}" ] || {
+	printf 'missing %s; set PROJECT_CFG_FILE to an existing config file\n' "${project_cfg_file}" >&2
+	exit 1
+}
 
 # Stop with a clear message when a host helper command is unavailable.
 require_command() {
@@ -75,7 +87,7 @@ sync_workflow_allowlist() {
 }
 
 # Load the reviewed image tags and version selectors that this script will lock down.
-. ./project.env.example
+. "${project_cfg_file}"
 
 # Docker Hub requires a short-lived token before manifest metadata can be fetched.
 docker_hub_token() {
@@ -143,12 +155,13 @@ dev_scan_actionlint_image_lock=$(resolve_image "${DEV_SCAN_ACTIONLINT_IMAGE}")
 dev_scan_trivy_image_lock=$(resolve_image "${DEV_SCAN_TRIVY_IMAGE}")
 dev_scan_syft_image_lock=$(resolve_image "${DEV_SCAN_SYFT_IMAGE}")
 dev_scan_grype_image_lock=$(resolve_image "${DEV_SCAN_GRYPE_IMAGE}")
+dev_renovate_image_lock=$(resolve_image "${DEV_RENOVATE_IMAGE}")
 
 # Rewrite the lock file that runtime scripts source during builds and scans.
-cat >config/lockfile.env <<EOF
+cat >config/lockfile.cfg <<EOF
 # --- Makefile-managed variables
 # - These lock values/checksums are generated from the reviewed selectors in
-#   project.env.example and synced by make update.
+#   ${PROJECT_CFG_FILE} and synced by make update.
 DEV_PACKAGE_SNAPSHOT_LOCK='${DEV_PACKAGE_SNAPSHOT_LOCK}'
 DEV_BASE_IMAGE_LOCK='${dev_base_image_lock}'
 DEV_GO_IMAGE_LOCK='${dev_go_image_lock}'
@@ -158,13 +171,20 @@ DEV_SCAN_ACTIONLINT_IMAGE_LOCK='${dev_scan_actionlint_image_lock}'
 DEV_SCAN_TRIVY_IMAGE_LOCK='${dev_scan_trivy_image_lock}'
 DEV_SCAN_SYFT_IMAGE_LOCK='${dev_scan_syft_image_lock}'
 DEV_SCAN_GRYPE_IMAGE_LOCK='${dev_scan_grype_image_lock}'
+DEV_RENOVATE_IMAGE_LOCK='${dev_renovate_image_lock}'
 EOF
 
 # Keep infra and README references synchronized with the newly resolved locks.
-perl -0pi -e 's#^FROM .* AS terraform-cli$#FROM '"${dev_terraform_image_lock}"' AS terraform-cli#m; s#^FROM .* AS dev-base$#FROM '"${dev_base_image_lock}"' AS dev-base#m' config/infra/Dockerfile
-perl -0pi -e 's#^      version = ".*"$#      version = "= '"${DEV_TERRAFORM_GITHUB_PROVIDER_VERSION}"'"#m' config/infra/versions.tf
-perl -0pi -e 's#^- Terraform image `.*` pinned to `.*`$#- Terraform image `'"${DEV_TERRAFORM_IMAGE}"'` pinned to `'"${dev_terraform_image_lock}"'`#m; s#^- GitHub provider `integrations/github` with `= .*`$#- GitHub provider `integrations/github` with `= '"${DEV_TERRAFORM_GITHUB_PROVIDER_VERSION}"'`#m' README.md
+DEV_TERRAFORM_IMAGE_LOCK_VALUE=${dev_terraform_image_lock} \
+	DEV_BASE_IMAGE_LOCK_VALUE=${dev_base_image_lock} \
+	perl -0pi -e 's#^FROM .* AS terraform-cli$#FROM $ENV{DEV_TERRAFORM_IMAGE_LOCK_VALUE} AS terraform-cli#m; s#^FROM .* AS dev-base$#FROM $ENV{DEV_BASE_IMAGE_LOCK_VALUE} AS dev-base#m' config/infra/Dockerfile
+DEV_TERRAFORM_GITHUB_PROVIDER_VERSION_VALUE=${DEV_TERRAFORM_GITHUB_PROVIDER_VERSION} \
+	perl -0pi -e 's#^      version = ".*"$#      version = "= $ENV{DEV_TERRAFORM_GITHUB_PROVIDER_VERSION_VALUE}"#m' config/infra/versions.tf
+DEV_TERRAFORM_IMAGE_VALUE=${DEV_TERRAFORM_IMAGE} \
+	DEV_TERRAFORM_IMAGE_LOCK_VALUE=${dev_terraform_image_lock} \
+	DEV_TERRAFORM_GITHUB_PROVIDER_VERSION_VALUE=${DEV_TERRAFORM_GITHUB_PROVIDER_VERSION} \
+	perl -0pi -e 's#^- Terraform image `.*` pinned to `.*`$#- Terraform image `$ENV{DEV_TERRAFORM_IMAGE_VALUE}` pinned to `$ENV{DEV_TERRAFORM_IMAGE_LOCK_VALUE}`#m; s#^- GitHub provider `integrations/github` with `= .*`$#- GitHub provider `integrations/github` with `= $ENV{DEV_TERRAFORM_GITHUB_PROVIDER_VERSION_VALUE}`#m' README.md
 sync_workflow_allowlist
 
 # End with a short machine-readable summary for maintainers.
-printf '%s\n' 'updated config/lockfile.env and aligned infra/README workflow pins'
+printf '%s\n' 'updated config/lockfile.cfg and aligned infra/README workflow pins'

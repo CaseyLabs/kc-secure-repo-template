@@ -10,9 +10,10 @@
 - [Quick Start](#quick-start)
 - [Setup](#setup)
 - [Usage](#usage)
+- [AI Agents Commands](#ai-agents-commands)
 - [Repository Layout](#repository-layout)
-- [Agentic AI Commands](#agentic-ai-commands)
-- [Third-Party Tools](#third-party-tools)
+- [Dependency Updates](#dependency-updates)
+- [Security Scanners](#security-scanners)
 
 <!-- /TOC -->
 
@@ -20,9 +21,10 @@
 
 - Nonroot containers for local development and CI workflows
 - Secret, workflow, and Dockerfile misconfiguration scanning (including Git history)
-- GitHub Actions CI workflow templates
-- Terraform configs for creating new repos
 - AI Agentic Coding template files
+- GitHub Actions CI workflow templates
+  - Tooling/dependency version upgrade checks with automated Pull Request automation
+- Terraform configs for creating new repos
 - Reproducible builds with pinned SHA checksums to help prevent supply-chain attacks <sup>[[1]](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions)</sup>
 
 ## Example Output
@@ -32,7 +34,7 @@
 
 ==> Build summary
 Image: kc-secure-template-example:local
-Env File: ./project.env
+Project config: ./config/project.cfg
 Source Code: ./src
 Results:
   Container build: passed
@@ -56,7 +58,6 @@ In a Terminal, run the following:
 git clone --depth 1 https://github.com/CaseyLabs/kc-secure-repo-template
 cd kc-secure-repo-template
 
-cp project.env.example project.env
 make example    # Builds/tests/runs an example container
 ```
 
@@ -66,7 +67,7 @@ make example    # Builds/tests/runs an example container
 
 - Then customize the following files to fit your project/code base:
 
-  - `project.env`
+  - `config/project.cfg`
   - `Dockerfile`
   - `scripts/*.sh`
 
@@ -85,9 +86,21 @@ make shell    # Opens a shell in the running container
 make status   # show the local image and running containers
 make logs     # show logs from running containers
 make scan     # run security and secret scanning
-make update   # Updates the pinned SHA checksums in `./config/lockfile.env`
+make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
+make renovate # Runs self-hosted Renovate for this repository
 make dist     # build release artifacts to `./dist`
 make infra    # build/test/plan the Terraform config from `./config/infra`
+```
+
+## AI Agents Commands
+
+This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
+
+Example commands:
+
+```text
+/review             # Performs a code review, based on the checklist in `.agents/code_review.md`
+$security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
 ```
 
 ## Repository Layout
@@ -95,13 +108,13 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
 ```text
 .
 ├── AGENTS.md                 # Repo-specific AI agent guidance
-├── project.env               # Project environment variables
 ├── Makefile                  # For all `make` commands
 ├── Dockerfile                # Default nonroot dev/CI container image
 ├── src/                      # Project source code (built into a container)
 ├── scripts/                  # Scripts used by the Makefile
 ├── config/
-│   ├── lockfile.env          # Pinned SHA checksums for project tooling
+│   ├── project.cfg           # Project configuration
+│   ├── lockfile.cfg          # Pinned SHA checksums for project tooling
 │   └── infra/                # Terraform example for GitHub repo hardening
 ├── .github/
 │   └── workflows/            # GitHub Actions workflows
@@ -110,19 +123,28 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
     └── skills/               # Repo-specific AI agent skills templates
 ```
 
-## Agentic AI Commands
+## Dependency Updates
 
-This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
+This template also includes two third-party tools to automate the upgrade of project images/tools/dependencies:
 
-Example commands:
+**Dependabot:** will automatically create new pull requests for GitHub Actions updates.
 
-```text
-/review             # Performs a code review, based on the checklist in `.agents/code_review.md`
+- `.github/dependabot.yml`
 
-$security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
+**Renovate:** will automatically create new pull requests for any tools listed in `config/project.cfg`:
+
+- `.github/renovate.json`
+- `.github/workflows/renovate.yml`
+
+_Note_: Renovate requires a GitHub App to be installed in order to operate. To create one, run:
+
+```shell
+.github/renovate/setup-github-app.sh
 ```
 
-## Third-Party Tools
+If you do not wish to use Renovate in your repo, set `DEV_SCAN_ENABLE_RENOVATE=false` in `config/project.cfg`.
+
+## Security Scanners
 
 This project uses the following open-source tools as part of its security scanning workflows:
 

@@ -2,22 +2,22 @@
 # shellcheck shell=sh disable=SC1090,SC2016
 set -eu
 
-# Let callers override the env file, but default to the checked-in project config.
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
+# Let callers override the config file, but default to the checked-in project config.
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
 # Turn bare filenames into a path relative to the repository root.
-case "${project_env}" in
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
 # Stop early with a helpful message if the config file is missing.
-[ -f "${project_env}" ] || {
-	printf 'missing %s; copy project.env.example to %s first\n' "${project_env}" "${PROJECT_ENV}" >&2
+[ -f "${project_cfg_file}" ] || {
+	printf 'missing %s; set PROJECT_CFG_FILE to an existing config file\n' "${project_cfg_file}" >&2
 	exit 1
 }
 
 # Load project settings such as image names and pinned tool images.
-. "${project_env}"
+. "${project_cfg_file}"
 
 # Reuse the project name to derive the example image name used by the bundled Go app.
 case "${PROJECT_NAME}" in
@@ -75,6 +75,6 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 printf '\n==> Build summary\n'
 # Print a short recap so users can see which image and config were used.
 printf '%s\n' "Image: ${src_image}"
-printf '%s\n' "Project env: ${PROJECT_ENV}"
+printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"
 printf '%s\n' 'Workspace: src'
 printf '%s\n' 'Result: build passed'

@@ -3,13 +3,13 @@
 set -eu
 
 # Load the project config so we can derive the matching example image name.
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
-case "${project_env}" in
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
-. "${project_env}"
+. "${project_cfg_file}"
 
 # Keep naming logic in sync with build/run/status.
 case "${PROJECT_NAME}" in

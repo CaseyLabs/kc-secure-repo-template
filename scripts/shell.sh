@@ -2,14 +2,14 @@
 # shellcheck shell=sh disable=SC1090
 set -eu
 
-# Load project configuration, defaulting to the standard env file.
-PROJECT_ENV=${1:-${PROJECT_ENV:-project.env}}
-project_env=${PROJECT_ENV}
-case "${project_env}" in
+# Load project configuration, defaulting to the standard config file.
+PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
+project_cfg_file=${PROJECT_CFG_FILE}
+case "${project_cfg_file}" in
 /* | ./* | ../*) ;;
-*) project_env="./${project_env}" ;;
+*) project_cfg_file="./${project_cfg_file}" ;;
 esac
-. "${project_env}"
+. "${project_cfg_file}"
 
 # Use the same derived image name as the build and run scripts.
 case "${PROJECT_NAME}" in
@@ -20,7 +20,7 @@ src_image="${src_name}:local"
 
 # Build the image on demand so the shell target works from a clean checkout.
 if ! docker image inspect "${src_image}" >/dev/null 2>&1; then
-	sh ./scripts/build.sh "${PROJECT_ENV}"
+	sh ./scripts/build.sh "${PROJECT_CFG_FILE}"
 fi
 
 # Match host uid/gid for writable bind mounts and caches.

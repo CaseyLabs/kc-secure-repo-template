@@ -1,8 +1,8 @@
+.env
 .git
 .agents
 .cache
 .tmp
-project.env
 **/.terraform
 **/.terraform.lock.hcl
 **/*.tfstate

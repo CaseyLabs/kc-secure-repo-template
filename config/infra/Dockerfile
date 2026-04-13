@@ -2,8 +2,8 @@
 # base image and nonroot runtime setup in one place.
 ARG DEBIAN_APT_SNAPSHOT
 
-FROM hashicorp/terraform:1.14.8:42ecfb253183ec823646dd7859c5652039669409b44daa72abf57112e622849a AS terraform-cli
-FROM debian:bookworm-slim:4724b8cc51e33e398f0e2e15e18d5ec2851ff0c2280647e1310bc1642182655d AS dev-base
+FROM hashicorp/terraform:1.14.8@sha256:42ecfb253183ec823646dd7859c5652039669409b44daa72abf57112e622849a AS terraform-cli
+FROM debian:bookworm-slim@sha256:4724b8cc51e33e398f0e2e15e18d5ec2851ff0c2280647e1310bc1642182655d AS dev-base
 
 ARG DEBIAN_APT_SNAPSHOT
 
@@ -27,4 +27,4 @@ COPY . .
 FROM dev-base AS dev
 COPY --from=terraform-cli /bin/terraform /usr/local/bin/terraform
 USER app:app
-CMD ["sh", "-eu", "-c", "project_env=${PROJECT_ENV:-project.env}; case ${project_env} in /*|./*|../*) ;; *) project_env=./${project_env} ;; esac; . ${project_env}; ( eval \"${LINT_COMMAND}\" ); ( eval \"${TEST_COMMAND}\" ); ( eval \"${BUILD_COMMAND}\" )"]
+CMD ["sh", "-eu", "-c", "project_cfg_file=${PROJECT_CFG_FILE:-config/project.cfg}; case ${project_cfg_file} in /*|./*|../*) ;; *) project_cfg_file=./${project_cfg_file} ;; esac; . ${project_cfg_file}; ( eval \"${LINT_COMMAND}\" ); ( eval \"${TEST_COMMAND}\" ); ( eval \"${BUILD_COMMAND}\" )"]

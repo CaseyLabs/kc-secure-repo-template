@@ -12,7 +12,6 @@ LICENSE.md
 Makefile
 README.md
 code_review.md
-project.env.example
 .dockerignore
 .gitignore
 .agents

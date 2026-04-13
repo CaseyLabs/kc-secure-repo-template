@@ -37,7 +37,7 @@ Use `make scan` for template security and workflow checks, and `make dist` for r
 Rules:
 
 1. Keep the root public interface condensed and easy to remember.
-2. Hide extra complexity behind `scripts/`, `project.env`, and compatibility targets when needed.
+2. Hide extra complexity behind `scripts/`, `config/project.cfg`, and compatibility targets when needed.
 
 ## Skill routing
 
@@ -65,7 +65,7 @@ If no matching skill exists, follow this file and the repository itself.
 ## Repository rules
 
 - `scripts/` contains implementation details for build, test, lint, release, and security checks.
-- `project.env` is the main customization point.
+- `config/project.cfg` is the main customization point.
 - `Dockerfile` provides the development and CI runtime baseline.
 - `.github/workflows/` should call `make` targets instead of duplicating project logic inline.
 - Keep template packaging and release manifests aligned.
