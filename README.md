@@ -95,7 +95,6 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
 ```text
 .
 ├── AGENTS.md                 # Repo-specific AI agent guidance
-├── code_review.md            # Repo-specific AI agent `/review` checklist
 ├── project.env               # Project environment variables
 ├── Makefile                  # For all `make` commands
 ├── Dockerfile                # Default nonroot dev/CI container image
@@ -107,6 +106,7 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
 ├── .github/
 │   └── workflows/            # GitHub Actions workflows
 └── .agents/
+    ├── code_review.md        # Repo-specific AI agent `/review` checklist
     └── skills/               # Repo-specific AI agent skills templates
 ```
 
@@ -117,7 +117,7 @@ This project includes Agentic commands and skills that can be used by AI CLI too
 Example commands:
 
 ```text
-/review             # Performs a code review, based on the checklist in `code_review.md`
+/review             # Performs a code review, based on the checklist in `agents/code_review.md`
 
 $security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
 ```

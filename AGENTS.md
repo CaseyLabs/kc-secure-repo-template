@@ -58,6 +58,7 @@ If no matching skill exists, follow this file and the repository itself.
 
 - Read the relevant files before editing.
 - Identify the affected workflow from the repository itself before choosing checks or commands.
+- For complex, ambiguous, multi-step, or high-risk work, inspect the repository first, then make a short plan and ask clarifying questions only for unresolved intent or tradeoffs.
 - If the task depends on tool versions, commands, flags, APIs, package versions, or installation steps, verify them against the latest official documentation before acting.
 - Prefer targeted changes over broad rewrites.
 
