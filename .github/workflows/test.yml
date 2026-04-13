@@ -1,5 +1,5 @@
 # Run the template's test path and generated-repo smoke validation.
-name: Run Code Tests (test.yml)
+name: Test Code (test.yml)
 
 on:
   push:
