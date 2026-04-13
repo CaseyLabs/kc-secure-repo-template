@@ -21,9 +21,10 @@
 
 - Nonroot containers for local development and CI workflows
 - Secret, workflow, and Dockerfile misconfiguration scanning (including Git history)
-- GitHub Actions CI workflow templates
-- Terraform configs for creating new repos
 - AI Agentic Coding template files
+- GitHub Actions CI workflow templates
+  - Tooling/dependency version upgrade checks with automated Pull Request automation
+- Terraform configs for creating new repos
 - Reproducible builds with pinned SHA checksums to help prevent supply-chain attacks <sup>[[1]](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions)</sup>
 
 ## Example Output
@@ -86,8 +87,21 @@ make status   # show the local image and running containers
 make logs     # show logs from running containers
 make scan     # run security and secret scanning
 make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
+make renovate # Runs self-hosted Renovate for this repository
 make dist     # build release artifacts to `./dist`
 make infra    # build/test/plan the Terraform config from `./config/infra`
+```
+
+## Agentic AI Commands
+
+This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
+
+Example commands:
+
+```text
+/review             # Performs a code review, based on the checklist in `.agents/code_review.md`
+
+$security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
 ```
 
 ## Repository Layout
@@ -110,19 +124,51 @@ make infra    # build/test/plan the Terraform config from `./config/infra`
     └── skills/               # Repo-specific AI agent skills templates
 ```
 
-## Agentic AI Commands
+## Automated Dependency Updates
 
-This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
+This template also includes two third-party tools to automate the upgrade of project images/tools/dependencies:
 
-Example commands:
+**Dependabot:** will automatically create new pull requests for GitHub Actions updates.
 
-```text
-/review             # Performs a code review, based on the checklist in `.agents/code_review.md`
+- `.github/dependabot.yml`
 
-$security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
-```
+**Renovate:** will automatically create new pull requests for any tools listed in `config/project.cfg`:
 
-## Third-Party Tools
+- `.github/renovate.json`
+- `.github/workflows/renovate.yml`
+- `.github/renovate/setup-github-app.sh`
+
+**Note:**
+
+- If you do not want to use Renovate in your repo, change this setting in `config/project.cfg`:
+  - `DEV_SCAN_ENABLE_RENOVATE=false`
+
+- Renovate requires the installation of a GitHub App in order to function:
+
+- [Renovate GitHub and GitHub Enterprise Server setup](https://docs.renovatebot.com/modules/platform/github/)
+- [Renovate self-hosted configuration](https://docs.renovatebot.com/self-hosted-configuration/)
+- [GitHub: Registering a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
+- [GitHub Action: `actions/create-github-app-token`](https://github.com/actions/create-github-app-token)
+
+Configure the GitHub App with these repository permissions:
+
+- Contents: read and write
+- Issues: read and write
+- Pull requests: read and write
+
+Then add these repository or organization values:
+
+- Variable: `RENOVATE_APP_CLIENT_ID`
+- Optional variable: `RENOVATE_APP_ID`
+- Secret: `RENOVATE_APP_PRIVATE_KEY`
+
+The hosted Renovate GitHub App can still read `.github/renovate.json`, but do not assume it can run `make update`; post-upgrade commands require an allowed self-hosted Renovate configuration or an equivalent hosted setting.
+
+If you do not wish to use Renovate in your repo, set the following setting in `config/project.cfg`
+
+`DEV_SCAN_ENABLE_RENOVATE=false`
+
+## Security Scanners
 
 This project uses the following open-source tools as part of its security scanning workflows:
 
@@ -131,18 +177,3 @@ This project uses the following open-source tools as part of its security scanni
 - [grype](https://github.com/anchore/grype): scans the generated SBOM for known vulnerabilities during release builds.
 - [syft](https://github.com/anchore/syft): generates SBOM output for release artifacts.
 - [trivy](https://github.com/aquasecurity/trivy): scans for Dockerfile misconfigurations in the repository.
-
-### Optional: Renovate Tooling Upgrader
-
-Renovate is a third-party tool that can be installed as a GitHub App in your repo:
-
-- https://github.com/apps/renovate
-
-When installed, Renovate will scan the tooling versions in `config/project.cfg`, and create automatically create pull requests for new tool/image releases.
-
-- `.github/renovate.json` is configured to update tooling pins only in `config/project.cfg`
-- Renovate runs `make update` to ensure pinned tools in `config/lockfile.cfg` stay updated
-
-If you do not wish to use Renovate in your repo, set the following setting in `config/project.cfg`
-
-`DEV_SCAN_ENABLE_RENOVATE=false`

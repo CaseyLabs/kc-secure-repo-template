@@ -155,6 +155,7 @@ dev_scan_actionlint_image_lock=$(resolve_image "${DEV_SCAN_ACTIONLINT_IMAGE}")
 dev_scan_trivy_image_lock=$(resolve_image "${DEV_SCAN_TRIVY_IMAGE}")
 dev_scan_syft_image_lock=$(resolve_image "${DEV_SCAN_SYFT_IMAGE}")
 dev_scan_grype_image_lock=$(resolve_image "${DEV_SCAN_GRYPE_IMAGE}")
+dev_renovate_image_lock=$(resolve_image "${DEV_RENOVATE_IMAGE}")
 
 # Rewrite the lock file that runtime scripts source during builds and scans.
 cat >config/lockfile.cfg <<EOF
@@ -170,6 +171,7 @@ DEV_SCAN_ACTIONLINT_IMAGE_LOCK='${dev_scan_actionlint_image_lock}'
 DEV_SCAN_TRIVY_IMAGE_LOCK='${dev_scan_trivy_image_lock}'
 DEV_SCAN_SYFT_IMAGE_LOCK='${dev_scan_syft_image_lock}'
 DEV_SCAN_GRYPE_IMAGE_LOCK='${dev_scan_grype_image_lock}'
+DEV_RENOVATE_IMAGE_LOCK='${dev_renovate_image_lock}'
 EOF
 
 # Keep infra and README references synchronized with the newly resolved locks.

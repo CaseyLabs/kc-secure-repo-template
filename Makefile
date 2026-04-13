@@ -38,6 +38,9 @@ shell: ## opens an shell in the running container
 update: ## refreshes pinned SHA hashes
 	sh scripts/update.sh "$(PROJECT_CFG_FILE)"
 
+renovate: ## runs self-hosted Renovate for this repository
+	sh scripts/renovate.sh "$(PROJECT_CFG_FILE)"
+
 example: ## runs the bundled Hello World example project
 	sh scripts/example.sh "$(PROJECT_CFG_FILE)"
 

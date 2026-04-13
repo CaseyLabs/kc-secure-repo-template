@@ -18,6 +18,19 @@
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
     }
   ],
+  "postUpgradeTasks": {
+    "commands": [
+      "sh scripts/update.sh config/project.cfg"
+    ],
+    "fileFilters": [
+      "README.md",
+      "config/project.cfg",
+      "config/lockfile.cfg",
+      "config/infra/Dockerfile",
+      "config/infra/versions.tf"
+    ],
+    "executionMode": "branch"
+  },
   "packageRules": [
     {
       "matchManagers": ["custom.regex"],
