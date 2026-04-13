@@ -10,10 +10,10 @@
 - [Quick Start](#quick-start)
 - [Setup](#setup)
 - [Usage](#usage)
+- [AI Agents Commands](#ai-agents-commands)
 - [Repository Layout](#repository-layout)
 - [Dependency Updates](#dependency-updates)
-- [Agentic AI Commands](#agentic-ai-commands)
-- [Third-Party Tools](#third-party-tools)
+- [Security Scanners](#security-scanners)
 
 <!-- /TOC -->
 
@@ -92,7 +92,7 @@ make dist     # build release artifacts to `./dist`
 make infra    # build/test/plan the Terraform config from `./config/infra`
 ```
 
-## Agentic AI Commands
+## AI Agents Commands
 
 This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
 
@@ -100,7 +100,6 @@ Example commands:
 
 ```text
 /review             # Performs a code review, based on the checklist in `.agents/code_review.md`
-
 $security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
 ```
 
@@ -124,7 +123,7 @@ $security-review    # Performs a security audit of the repo, using `.agents/skil
     └── skills/               # Repo-specific AI agent skills templates
 ```
 
-## Automated Dependency Updates
+## Dependency Updates
 
 This template also includes two third-party tools to automate the upgrade of project images/tools/dependencies:
 
@@ -136,37 +135,14 @@ This template also includes two third-party tools to automate the upgrade of pro
 
 - `.github/renovate.json`
 - `.github/workflows/renovate.yml`
-- `.github/renovate/setup-github-app.sh`
 
-**Note:**
+_Note_: Renovate requires a GitHub App to be installed in order to operate. To create one, run:
 
-- If you do not want to use Renovate in your repo, change this setting in `config/project.cfg`:
-  - `DEV_SCAN_ENABLE_RENOVATE=false`
+```shell
+.github/renovate/setup-github-app.sh
+```
 
-- Renovate requires the installation of a GitHub App in order to function:
-
-- [Renovate GitHub and GitHub Enterprise Server setup](https://docs.renovatebot.com/modules/platform/github/)
-- [Renovate self-hosted configuration](https://docs.renovatebot.com/self-hosted-configuration/)
-- [GitHub: Registering a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
-- [GitHub Action: `actions/create-github-app-token`](https://github.com/actions/create-github-app-token)
-
-Configure the GitHub App with these repository permissions:
-
-- Contents: read and write
-- Issues: read and write
-- Pull requests: read and write
-
-Then add these repository or organization values:
-
-- Variable: `RENOVATE_APP_CLIENT_ID`
-- Optional variable: `RENOVATE_APP_ID`
-- Secret: `RENOVATE_APP_PRIVATE_KEY`
-
-The hosted Renovate GitHub App can still read `.github/renovate.json`, but do not assume it can run `make update`; post-upgrade commands require an allowed self-hosted Renovate configuration or an equivalent hosted setting.
-
-If you do not wish to use Renovate in your repo, set the following setting in `config/project.cfg`
-
-`DEV_SCAN_ENABLE_RENOVATE=false`
+If you do not wish to use Renovate in your repo, set `DEV_SCAN_ENABLE_RENOVATE=false` in `config/project.cfg`.
 
 ## Security Scanners
 

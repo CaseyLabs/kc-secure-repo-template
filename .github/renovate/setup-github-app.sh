@@ -132,7 +132,7 @@ CALLBACK_FILE="${WORKDIR}/callback.txt"
 python3 "${WORKDIR}/callback_server.py" "${CALLBACK_HOST}" "${CALLBACK_PORT}" "${CALLBACK_FILE}" &
 SERVER_PID=$!
 
-export APP_NAME APP_DESCRIPTION CALLBACK_URL
+export ACCOUNT_KIND APP_NAME APP_DESCRIPTION CALLBACK_URL
 python3 - <<'PY' >"${WORKDIR}/manifest.json"
 import json
 import os
@@ -157,8 +157,7 @@ manifest = {
         "pull_requests": "write",
         "workflows": "write",
         "administration": "read",
-        "dependabot_alerts": "read",
-        "members": "read",
+        "vulnerability_alerts": "read",
         "metadata": "read"
     },
     "default_events": [
@@ -172,6 +171,8 @@ manifest = {
         "status"
     ]
 }
+if os.environ["ACCOUNT_KIND"] == "org":
+    manifest["default_permissions"]["members"] = "read"
 print(json.dumps(manifest))
 PY
 

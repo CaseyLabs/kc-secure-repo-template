@@ -23,9 +23,16 @@ jobs:
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
+          permission-checks: write
+          permission-statuses: write
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
+          permission-workflows: write
+          permission-administration: read
+          permission-vulnerability-alerts: read
+          permission-members: ${{ github.event.repository.owner.type == 'Organization' && 'read' || '' }}
+          permission-metadata: read
       - name: Run self-hosted Renovate
         env:
           RENOVATE_TOKEN: ${{ steps.app-token.outputs.token }}
