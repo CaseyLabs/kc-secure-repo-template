@@ -1,6 +1,6 @@
 ---
 name: language-profile-guidance
-description: Add or revise optional language-specific guidance for Go, Node.js, SQL, or small polyglot repositories without bloating the generic template. Do not use for generic template policy, routine validation, or GitHub-settings-only work.
+description: Use when adding or revising optional language-specific guidance for Go, Node.js, SQL, or small polyglot derived repositories without bloating the generic template. Keep language behavior optional. Do not use for generic template policy, routine validation, GitHub-settings-only work, or release-integrity-only work.
 ---
 
 # Language profile guidance
@@ -18,6 +18,7 @@ Use this skill when adding or revising optional language-specific guidance for d
 - the task is about GitHub-side settings
 - the task is about release-integrity design
 - the task is just routine validation of existing behavior
+- the task would make one language stack mandatory for all derived repositories
 
 ## Goals
 - Improve usability for common project types without turning the template into a framework.
@@ -30,6 +31,7 @@ Use this skill when adding or revising optional language-specific guidance for d
 - Prefer documentation and examples over hard-coding specialized behavior into the base template.
 - Keep the public interface stable even when language-specific implementation details differ.
 - When adding language-specific checks, explain where they belong: template, docs, CI helper scripts, or derived repositories.
+- Use `template-adaptation` as the companion skill when language guidance changes the customization surface.
 
 ## Guidance areas
 - Go: formatting, vetting, tests, vulnerability checks

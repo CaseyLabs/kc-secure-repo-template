@@ -1,6 +1,6 @@
 ---
 name: release-integrity
-description: Review or improve the repository's release-integrity story, including artifact verification, SBOMs, attestations, scanning, signing guidance, and release-workflow safety. Do not use for general CI validation or unrelated template customization.
+description: Use when reviewing or improving this template's release-integrity story, including artifact verification, SBOMs, attestations, vulnerability scanning, signing guidance, and release-workflow safety. Do not use for general CI validation, GitHub-settings-only work, or unrelated template customization.
 ---
 
 # Release integrity
@@ -27,11 +27,14 @@ Use this skill when working on release and artifact integrity for this template.
 
 ## Method
 - Treat release workflows as sensitive paths.
+- Review `scripts/dist.sh`, `.github/workflows/release.yml`, and release-related `project.env` settings as the core release-integrity surface.
 - Prefer explicit tool versions and pinned actions where practical.
 - Verify downloaded tools with checksums or signatures when feasible.
+- Keep SBOM, Grype, checksum, provenance, attestation, and compliance-summary outputs aligned when release behavior changes.
 - Keep generated artifacts and caches out of the Docker build context where appropriate.
 - Document any weakening of defaults explicitly.
 - Keep guidance clear about what evidence a derived repository should produce and why.
+- Pair this skill with `template-validation` when release changes require `make dist`, workflow checks, or packaging-manifest validation.
 
 ## Review priorities
 - supply-chain risk
