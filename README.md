@@ -117,7 +117,7 @@ This project includes Agentic commands and skills that can be used by AI CLI too
 Example commands:
 
 ```text
-/review             # Performs a code review, based on the checklist in `agents/code_review.md`
+/review             # Performs a code review, based on the checklist in `.agents/code_review.md`
 
 $security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
 ```
