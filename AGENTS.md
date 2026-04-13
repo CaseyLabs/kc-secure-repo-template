@@ -48,6 +48,7 @@ Typical routing:
 - Use `template-adaptation` when adapting this template to a new project or revising customization points.
 - Use `template-validation` when changing `Makefile`, `Dockerfile`, `scripts/`, tests, packaging manifests, CI, or release workflows.
 - Use `github-hardening` when updating GitHub-side hardening guidance or required repository settings.
+- Use `template-infra-hardening` when changing or reviewing the Terraform-backed GitHub repository hardening workspace under `config/infra`.
 - Use `release-integrity` when working on SBOMs, attestations, artifact scanning, signing guidance, or release workflow safety.
 - Use `language-profile-guidance` when adding or revising optional Go, Node.js, SQL, or polyglot guidance.
 

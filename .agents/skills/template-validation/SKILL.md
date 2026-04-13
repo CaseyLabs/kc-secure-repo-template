@@ -1,6 +1,6 @@
 ---
 name: template-validation
-description: Validate that this repository template still works as intended through Docker-first Makefile workflows, regression checks, smoke tests, and documentation alignment. Do not use for template redesign or GitHub-policy-only changes.
+description: Use when validating that this repository template still works as intended after changes to Docker-first Makefile workflows, scripts, CI, release packaging, smoke tests, or documentation alignment. Do not use for template redesign, GitHub-policy-only changes, or instruction-only skill edits with no workflow impact.
 ---
 
 # Template validation
@@ -31,12 +31,16 @@ Use this skill when validating changes to this repository template.
 - Verify that the documented public interface still matches the real workflow.
 - Check that local and GitHub Actions paths still align where expected.
 - Check that packaging manifests and shipped files remain aligned.
+- Use `make scan` for template security and workflow checks when security scanners, pinned actions, or workflow validation are affected.
+- Use `make dist` for release artifact, SBOM, checksum, or integrity-output changes.
 - When a real bug lacks regression coverage, add or update a targeted test.
 
 ## Minimum expectations
 Validate the relevant subset of:
 - `make build`
 - `make test`
+- `make scan`
+- `make dist`
 - `make example`
 - documented CI helper scripts
 - documented release helper scripts

@@ -1,11 +1,11 @@
 ---
 name: template-adaptation
-description: Adapt this secure repository template to a new project while preserving the stable Makefile interface, container-first workflow, security defaults, and reproducibility guarantees. Do not use for routine bug fixes, small refactors, or pure validation work.
+description: Use when adapting this secure repository template to a new derived project or revising its customization surface while preserving the stable Makefile interface, container-first workflow, security defaults, and reproducibility guarantees. Do not use for routine bug fixes, small refactors, pure validation, GitHub-settings-only work, or release-integrity-only work.
 ---
 
 # Template adaptation
 
-Use this skill when adapting this repository template to a new project.
+Use this skill when adapting this repository template to a new derived project.
 
 ## Use this skill when
 - initializing a new derived repository from this template
@@ -18,6 +18,7 @@ Use this skill when adapting this repository template to a new project.
 - only validating existing behavior without changing the adaptation model
 - only updating GitHub-side settings guidance
 - only changing release integrity or artifact-verification behavior
+- only changing the Terraform-backed GitHub hardening workspace under `config/infra`
 
 ## Goals
 - Preserve the secure-by-default posture of the template.
@@ -31,6 +32,7 @@ Use this skill when adapting this repository template to a new project.
 - Treat `project.env` as the main customization point for project-specific commands and settings.
 - Keep changes small and reviewable.
 - Prefer optional language-specific extensions over baking language-specific logic into the generic template.
+- For Terraform-backed GitHub hardening changes under `config/infra`, use `template-infra-hardening` instead.
 - If a change weakens security, reproducibility, or reviewability, document the reason explicitly.
 - Update documentation when the customization surface, workflow, or security posture changes.
 
