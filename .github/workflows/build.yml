@@ -1,5 +1,5 @@
 # Build the template's checked-in container image on pushes and pull requests.
-name: build
+name: Build Code (build.yml)
 
 on:
   push:

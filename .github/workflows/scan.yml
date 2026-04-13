@@ -1,5 +1,5 @@
 # Scan the checked-in tree for secrets and workflow policy issues.
-name: scan
+name: Run Security Scans (scan.yml)
 
 on:
   push:
