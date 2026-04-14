@@ -9,11 +9,11 @@ on:
       - "v*"
 
 # Permissions default to none except what each workflow asks for. Releases need
-# read access to the repository, OIDC for Sigstore provenance, and write access
-# to upload GitHub artifact attestations.
+# write access to create the GitHub release and upload assets, OIDC for
+# Sigstore provenance, and write access to upload GitHub artifact attestations.
 permissions:
   attestations: write
-  contents: read
+  contents: write
   id-token: write
 
 # Never cancel an in-flight release for a tag. Release jobs create artifacts and
@@ -84,3 +84,21 @@ jobs:
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: "dist/**"
+      # Publish the same validated and attested files to the GitHub Release so
+      # users can download the archive, checksums, SBOM, and reports from the
+      # versioned release page.
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" dist/* --clobber
+          else
+            gh release create "${RELEASE_TAG}" dist/* \
+              --title "${RELEASE_TAG}" \
+              --generate-notes \
+              --latest
+          fi

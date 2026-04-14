@@ -92,6 +92,10 @@ make dist     # build release artifacts to `./dist`
 make infra    # build/test/plan the Terraform config from `./config/infra`
 ```
 
+Version tag builds publish the generated release archive and integrity outputs
+to the GitHub Release page. The same files are also retained as the release
+workflow artifact bundle for CI evidence.
+
 ## AI Agents Commands
 
 This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
