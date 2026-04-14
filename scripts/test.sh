@@ -253,7 +253,7 @@ func main() {
 }
 EOF
 		cat >config/project.cfg <<'EOF'
-DEV_BASE_IMAGE='golang:1.26.1-bookworm@sha256:09f72a3e4d00f209358f03b93e4d62e6ed45b786569c2d97e83cb7cbaaed15f2'
+DEV_BASE_IMAGE='golang:1.26.1-trixie@sha256:1d414b0376b53ec94b9a2493229adb81df8b90af014b18619732f1ceaaf7234a'
 DEV_PACKAGE_SNAPSHOT_LOCK='20260401T164506Z'
 DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f'
 DEV_SCAN_ACTIONLINT_IMAGE_LOCK='rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667'
@@ -265,7 +265,7 @@ EOF
 ARG DEV_BASE_IMAGE
 ARG DEV_PACKAGE_SNAPSHOT
 
-FROM ${DEV_BASE_IMAGE:-golang:1.26.1-bookworm} AS dev
+FROM ${DEV_BASE_IMAGE:-golang:1.26.1-trixie} AS dev
 
 WORKDIR /workspace
 COPY . .
@@ -326,7 +326,7 @@ EOF
 		tar -C "${root_dir}" -cf - -T "${workdir}/files.txt" | tar -xf -
 		# Also verify the bundled infra workspace works in a fresh copied repository.
 		cat >config/project.cfg <<'EOF'
-DEV_BASE_IMAGE='debian:bookworm-slim@sha256:4724b8cc51e33e398f0e2e15e18d5ec2851ff0c2280647e1310bc1642182655d'
+DEV_BASE_IMAGE='debian:trixie-slim@sha256:4ffb3a1511099754cddc70eb1b12e50ffdb67619aa0ab6c13fcd800a78ef7c7a'
 DEV_PACKAGE_SNAPSHOT_LOCK='20260401T164506Z'
 DEV_TERRAFORM_IMAGE='hashicorp/terraform:1.14.8'
 DEV_TERRAFORM_IMAGE_LOCK='hashicorp/terraform:1.14.8@sha256:42ecfb253183ec823646dd7859c5652039669409b44daa72abf57112e622849a'
