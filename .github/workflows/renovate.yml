@@ -22,7 +22,8 @@ jobs:
         with:
           persist-credentials: false
       # Mint a short-lived GitHub App token so Renovate can open PRs and update
-      # workflow/package files without storing a broad personal access token.
+      # the files allowed by `.github/renovate.json` without storing a broad
+      # personal access token.
       - name: Create Renovate GitHub App token
         id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
@@ -35,10 +36,7 @@ jobs:
           permission-statuses: write
           permission-contents: write
           permission-pull-requests: write
-          permission-workflows: write
           permission-administration: read
-          permission-vulnerability-alerts: read
-          permission-members: ${{ github.event.repository.owner.type == 'Organization' && 'read' || '' }}
           permission-metadata: read
       # make renovate keeps Renovate execution inside the repository's normal
       # container-first Makefile interface.

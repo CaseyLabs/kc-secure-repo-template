@@ -158,26 +158,12 @@ manifest = {
         "checks": "write",
         "statuses": "write",
         "contents": "write",
-        "issues": "write",
         "pull_requests": "write",
-        "workflows": "write",
         "administration": "read",
-        "vulnerability_alerts": "read",
         "metadata": "read"
     },
-    "default_events": [
-        "security_advisory",
-        "check_run",
-        "check_suite",
-        "issues",
-        "pull_request",
-        "push",
-        "repository",
-        "status"
-    ]
+    "default_events": []
 }
-if os.environ["ACCOUNT_KIND"] == "org":
-    manifest["default_permissions"]["members"] = "read"
 print(json.dumps(manifest))
 PY
 

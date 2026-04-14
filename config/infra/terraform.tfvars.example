@@ -2,6 +2,8 @@ github_owner = "your-github-user-or-org"
 
 repository_name        = "example-secure-repository"
 repository_description = "Repository description goes here"
+# For private or internal repositories, GitHub secret scanning and push
+# protection depend on GitHub Secret Protection plan/organization settings.
 repository_visibility  = "private"
 
 required_status_checks = [
