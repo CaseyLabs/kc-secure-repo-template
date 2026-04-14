@@ -2,6 +2,7 @@
 PROJECT_CFG_FILE ?= config/project.cfg
 PROJECT_NAME ?= kc-secure-template-dev
 PROJECT_IMAGE ?= $(PROJECT_NAME):local
+TEST_MODE ?= src
 
 # Dynamically generate Makefile commands
 PHONY_TARGETS := $(shell awk '/^[[:alnum:]_-]+:([^=]|$$).*##(@internal)? / { sub(/:.*/, "", $$1); print $$1 }' $(lastword $(MAKEFILE_LIST)))
@@ -14,8 +15,8 @@ help: ##@show available options
 build: ## builds the project as a dev container image
 	sh scripts/build.sh "$(PROJECT_CFG_FILE)"
 
-test: ## runs lint and tests against the built src image
-	sh scripts/test.sh "$(PROJECT_CFG_FILE)"
+test: ## runs lint and tests for the selected test mode
+	sh scripts/test.sh "$(TEST_MODE)" "$(PROJECT_CFG_FILE)"
 
 run: ## runs the built src container
 	sh scripts/run.sh "$(PROJECT_CFG_FILE)"
