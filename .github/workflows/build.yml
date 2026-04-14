@@ -84,9 +84,9 @@ jobs:
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: "dist/**"
-      # Publish the same validated and attested files to the GitHub Release so
-      # users can download the archive, checksums, SBOM, and reports from the
-      # versioned release page.
+      # Publish the human- and machine-readable integrity files to the GitHub
+      # Release page. The full generated dist/ bundle remains available as the
+      # Actions artifact for CI evidence.
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,10 +94,17 @@ jobs:
         run: |
           set -eu
 
+          release_assets='dist/SECURITY-ANALYSIS.md dist/SHA256SUMS dist/template.spdx.json'
+
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" dist/* --clobber
+            for asset in grype-report.txt kc-secure-repo-template.tar.gz template-manifest.txt; do
+              gh release delete-asset "${RELEASE_TAG}" "${asset}" --yes >/dev/null 2>&1 || true
+            done
+            # shellcheck disable=SC2086
+            gh release upload "${RELEASE_TAG}" ${release_assets} --clobber
           else
-            gh release create "${RELEASE_TAG}" dist/* \
+            # shellcheck disable=SC2086
+            gh release create "${RELEASE_TAG}" ${release_assets} \
               --title "${RELEASE_TAG}" \
               --generate-notes \
               --latest
