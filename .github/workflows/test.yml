@@ -1,28 +1,53 @@
 # Run the template's test path and generated-repo smoke validation.
-name: Test Code (test.yml)
+name: test.yml
 
+# Run tests on main and on pull requests so protected branches can require the
+# same checks before merge.
 on:
   push:
     branches:
       - main
   pull_request:
 
+# The tests only need to read repository contents.
 permissions:
   contents: read
 
+# Cancel older runs for the same branch or PR when a newer commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  test-src:
+    # Required check: validates the checked-in src/ workspace.
+    name: test-code
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # Checkout keeps credentials out of the local Git config after the step.
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
-      - name: Run tests
+      # Buildx enables GitHub Actions cache import/export for Docker layers.
+      - name: Set up Docker build cache
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Run source tests and build
         env:
+          # scripts/build.sh reads this variable and passes it to docker buildx.
           DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=src-image --cache-to type=gha,scope=src-image,mode=max
         run: PROJECT_CFG_FILE=config/project.cfg make test
-      - name: Run generated-repo smoke tests
-        env:
-          DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=smoke-image --cache-to type=gha,scope=smoke-image,mode=max
+
+  test-smoke:
+    # Required check: copies the template into fresh directories and validates
+    # that a generated repository can still build and scan.
+    name: test-repo
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      # TEST_MODE=smoke selects the generated-repo smoke path in scripts/test.sh.
+      - name: Run generated repository smoke test
         run: PROJECT_CFG_FILE=config/project.cfg TEST_MODE=smoke make test

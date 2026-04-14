@@ -76,7 +76,7 @@ make example    # Builds/tests/runs an example container
 ```shell
 # Main Commands
 make build    # builds the project as a container image
-make test     # run code linters and tests built container image
+make test     # run code linters, tests, and source build in the container image
 make run      # runs the container
 make stop     # stops the contaner
 

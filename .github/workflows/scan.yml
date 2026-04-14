@@ -1,25 +1,40 @@
 # Scan the checked-in tree for secrets and workflow policy issues.
-name: Security Scan Code (scan.yml)
+name: scan.yml
 
+# Run security checks on main and on pull requests so the same check can protect
+# the default branch.
 on:
   push:
     branches:
       - main
   pull_request:
 
+# Security scans only need repository read access.
 permissions:
   contents: read
 
+# Cancel older scan runs for the same branch or PR when a newer commit appears.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   scan:
+    name: scan-repo
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # fetch-depth: 0 preserves full history so gitleaks can scan commits, not
+      # just files in the current checkout.
+      - name: Check out repository history
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
-      - name: Run security scans
+      # Buildx enables Docker layer cache export/import for the scan image.
+      - name: Set up Docker build cache
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Run secret and workflow scans
         env:
+          # scripts/scan.sh reads this variable and passes it to docker buildx.
           DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=project-image --cache-to type=gha,scope=project-image,mode=max
         run: PROJECT_CFG_FILE=config/project.cfg make scan

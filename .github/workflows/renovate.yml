@@ -1,22 +1,30 @@
 # Run self-hosted Renovate so dependency PRs can refresh generated lock values.
-name: Renovate Upgrades (renovate.yml)
+name: renovate.yml
 
+# This workflow can be run manually and also runs on a monthly schedule.
 on:
   workflow_dispatch:
   schedule:
     - cron: "17 9 1 * *"
 
+# The default token only needs read access because Renovate uses a GitHub App
+# token with narrower, explicit permissions for repository changes.
 permissions:
   contents: read
 
 jobs:
   renovate:
+    name: update-dependencies
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - id: app-token
+      # Mint a short-lived GitHub App token so Renovate can open PRs and update
+      # workflow/package files without storing a broad personal access token.
+      - name: Create Renovate GitHub App token
+        id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
           client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
@@ -32,7 +40,9 @@ jobs:
           permission-vulnerability-alerts: read
           permission-members: ${{ github.event.repository.owner.type == 'Organization' && 'read' || '' }}
           permission-metadata: read
-      - name: Run self-hosted Renovate
+      # make renovate keeps Renovate execution inside the repository's normal
+      # container-first Makefile interface.
+      - name: Run Renovate dependency updates
         env:
           RENOVATE_TOKEN: ${{ steps.app-token.outputs.token }}
           RENOVATE_REPOSITORY: ${{ github.repository }}
