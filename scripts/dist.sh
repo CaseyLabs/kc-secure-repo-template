@@ -85,6 +85,7 @@ fi
 
 # Store all integrity outputs next to the release artifact.
 mkdir -p "${release_dir}"
+rm -f "${release_dir}/SECURITY-ANALYSIS.md" "${release_dir}/SHA256SUMS" "${release_dir}/grype-report.txt" "${release_dir}/template.spdx.json"
 
 # Generate an SBOM first because Grype can scan it later.
 if [ "${enable_sbom}" = 'true' ]; then
@@ -137,13 +138,6 @@ if [ "${enable_grype}" = 'true' ]; then
 		-o table >"${release_dir}/grype-report.txt"
 fi
 
-# Hash every generated evidence file except the checksum file itself and the final report.
-find "${release_dir}" -maxdepth 1 -type f ! -name SHA256SUMS ! -name SECURITY-ANALYSIS.md -print |
-	LC_ALL=C sort |
-	while IFS= read -r path; do
-		sha256sum "${path}"
-	done >"${release_dir}/SHA256SUMS"
-
 # Write a human-readable summary that records what controls ran for this release build.
 {
 	printf '# Compliance Report\n\n'
@@ -153,8 +147,16 @@ find "${release_dir}" -maxdepth 1 -type f ! -name SHA256SUMS ! -name SECURITY-AN
 	printf -- '- Version: `%s`\n' "${release_version}"
 	printf -- '- Target: `%s`\n' "${release_target}"
 	printf -- '- Output directory: `%s`\n\n' "${release_dir}"
+	printf '## Published Release Assets\n\n'
+	printf -- '- `%s/SECURITY-ANALYSIS.md`\n' "${release_dir}"
+	printf -- '- `%s/SHA256SUMS`\n' "${release_dir}"
+	if [ "${enable_sbom}" = 'true' ]; then
+		printf -- '- `%s/template.spdx.json`\n' "${release_dir}"
+	fi
+	printf '\n## Workflow Artifact Bundle\n\n'
+	printf 'The complete `%s` directory is retained as the release workflow artifact bundle for CI evidence.\n\n' "${release_dir}"
 	printf '## Controls\n\n'
-	printf -- '- Checksums: always generated.\n'
+	printf -- '- Checksums: `%s/SHA256SUMS` covers the published release assets generated before the checksum file.\n' "${release_dir}"
 	if [ "${enable_sbom}" = 'true' ]; then
 		printf -- '- SBOM: `%s/template.spdx.json`\n' "${release_dir}"
 	else
@@ -165,12 +167,17 @@ find "${release_dir}" -maxdepth 1 -type f ! -name SHA256SUMS ! -name SECURITY-AN
 	else
 		printf -- '- Vulnerability scan: skipped.\n'
 	fi
-	printf '\n## Checksums\n\n```\n'
-	cat "${release_dir}/SHA256SUMS"
-	printf '```\n'
 	if [ -f "${release_dir}/grype-report.txt" ]; then
 		printf '\n## Vulnerability Scan\n\n```\n'
 		cat "${release_dir}/grype-report.txt"
 		printf '```\n'
 	fi
 } >"${release_dir}/SECURITY-ANALYSIS.md"
+
+# Hash published release assets that exist before the checksum file is written.
+{
+	sha256sum "${release_dir}/SECURITY-ANALYSIS.md"
+	if [ -f "${release_dir}/template.spdx.json" ]; then
+		sha256sum "${release_dir}/template.spdx.json"
+	fi
+} >"${release_dir}/SHA256SUMS"

@@ -72,6 +72,8 @@ jobs:
       # make dist creates the archive plus SBOM, vulnerability report,
       # checksums, and the human-readable release integrity summary.
       - name: Build release artifacts
+        env:
+          RELEASE_INTEGRITY_VERSION: ${{ github.ref_name }}
         run: PROJECT_CFG_FILE=config/project.cfg make dist
       # Upload dist/ so release outputs can be downloaded from the Actions run.
       - name: Upload release artifact bundle
@@ -94,7 +96,12 @@ jobs:
         run: |
           set -eu
 
-          release_assets='dist/SECURITY-ANALYSIS.md dist/SHA256SUMS dist/template.spdx.json'
+          release_assets=
+          for asset in dist/SECURITY-ANALYSIS.md dist/SHA256SUMS dist/template.spdx.json; do
+            if [ -f "${asset}" ]; then
+              release_assets="${release_assets} ${asset}"
+            fi
+          done
 
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             for asset in grype-report.txt kc-secure-repo-template.tar.gz template-manifest.txt; do
