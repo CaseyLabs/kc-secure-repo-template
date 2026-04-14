@@ -5,7 +5,7 @@ repository_description = "Repository description goes here"
 repository_visibility  = "private"
 
 required_status_checks = [
-  "test-src",
-  "test-smoke",
-  "scan",
+  "test-code",
+  "test-repo",
+  "scan-repo",
 ]
