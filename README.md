@@ -23,7 +23,7 @@
 - Secret, workflow, and Dockerfile misconfiguration scanning (including Git history)
 - AI Agentic Coding template files
 - GitHub Actions CI workflow templates
-  - Tooling/dependency version upgrade checks with automated Pull Request automation
+- Automated tooling/dependency version upgrade checks
 - Terraform configs for creating new repos
 - Reproducible builds with pinned SHA checksums to help prevent supply-chain attacks <sup>[[1]](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions)</sup>
 
@@ -125,26 +125,24 @@ $security-review    # Performs a security audit of the repo, using `.agents/skil
 
 ## Dependency Updates
 
-This template also includes two third-party tools to automate the upgrade of project images/tools/dependencies:
+This template also uses third-party tools to automate the upgrade of project images/tools/dependencies via Pull Requests:
 
-**Dependabot:** will automatically create new pull requests for GitHub Actions updates.
+- [dependabot](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/dependabot-quickstart-guide):
+  - `.github/dependabot.yml`
 
-- `.github/dependabot.yml`
+- [renovate](https://github.com/renovatebot/renovate): will update any tools listed in `config/project.cfg`
+  - `.github/renovate.json`
+  - `.github/workflows/renovate.yml`
 
-**Renovate:** will automatically create new pull requests for any tools listed in `config/project.cfg`:
+  _Note_: Renovate requires a GitHub App to be installed in order to operate. To create one, run:
 
-- `.github/renovate.json`
-- `.github/workflows/renovate.yml`
+  ```shell
+  .github/renovate/setup-github-app.sh
+  ```
 
-_Note_: Renovate requires a GitHub App to be installed in order to operate. To create one, run:
+  - If you do not wish to use Renovate in your repo:
 
-```shell
-.github/renovate/setup-github-app.sh
-```
-
-If you do not wish to use Renovate in your repo:
-
-- set `DEV_SCAN_ENABLE_RENOVATE=false` in `config/project.cfg`.
+    - set `DEV_SCAN_ENABLE_RENOVATE=false` in `config/project.cfg`.
 
 ## Security Scanners
 
