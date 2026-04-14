@@ -1,5 +1,5 @@
 # Run self-hosted Renovate so dependency PRs can refresh generated lock values.
-name: Renovate Upgrades (renovate.yml)
+name: renovate.yml
 
 # This workflow can be run manually and also runs on a monthly schedule.
 on:

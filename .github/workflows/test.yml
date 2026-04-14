@@ -1,5 +1,5 @@
 # Run the template's test path and generated-repo smoke validation.
-name: Test Code (test.yml)
+name: test.yml
 
 # Run tests on main and on pull requests so protected branches can require the
 # same checks before merge.

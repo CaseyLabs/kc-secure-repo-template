@@ -1,5 +1,5 @@
 # Scan the checked-in tree for secrets and workflow policy issues.
-name: Security Scan Code (scan.yml)
+name: scan.yml
 
 # Run security checks on main and on pull requests so the same check can protect
 # the default branch.

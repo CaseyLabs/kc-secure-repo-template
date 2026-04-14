@@ -1,5 +1,5 @@
 # Build code and artifacts from src/
-name: Build Release Artifacts (build.yml)
+name: build.yml
 
 # This workflow only runs for version tags. Normal pushes and pull requests use
 # test.yml and scan.yml for fast feedback.
