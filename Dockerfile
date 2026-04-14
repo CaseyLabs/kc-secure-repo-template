@@ -7,7 +7,7 @@ ARG DEV_PACKAGE_SNAPSHOT
 
 # Start from the configured base image. The default keeps this template usable
 # even if a build does not explicitly override the value.
-FROM ${DEV_BASE_IMAGE:-debian:bookworm-slim} AS dev
+FROM ${DEV_BASE_IMAGE:-debian:trixie-slim} AS dev
 
 # Re-declare the argument after `FROM` so it is available in this stage.
 ARG DEV_PACKAGE_SNAPSHOT
@@ -18,9 +18,9 @@ ARG DEV_PACKAGE_SNAPSHOT
 # The cleanup at the end removes apt cache files so the image stays smaller.
 RUN rm -f /etc/apt/sources.list.d/debian.sources && \
     printf '%s\n' \
-        "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEV_PACKAGE_SNAPSHOT} bookworm main" \
-        "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEV_PACKAGE_SNAPSHOT} bookworm-updates main" \
-        "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEV_PACKAGE_SNAPSHOT} bookworm-security main" \
+        "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEV_PACKAGE_SNAPSHOT} trixie main" \
+        "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEV_PACKAGE_SNAPSHOT} trixie-updates main" \
+        "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEV_PACKAGE_SNAPSHOT} trixie-security main" \
         >/etc/apt/sources.list && \
     apt-get -o Acquire::Check-Valid-Until=false update && \
     apt-get install -y --no-install-recommends bash ca-certificates curl git jq make tar gzip && \
