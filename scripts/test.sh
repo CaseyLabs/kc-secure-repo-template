@@ -165,8 +165,8 @@ src)
 		"${src_image}" \
 		sh -eu -c 'cd src && test -z "$(gofmt -l .)" && go vet ./...'
 
-	printf '\n==> Test src workspace\n'
-	# Run the example unit tests in the same containerized environment.
+	printf '\n==> Test and build src workspace\n'
+	# Run the example unit tests and build in the same containerized environment.
 	docker run --rm --user "${docker_uid}:${docker_gid}" \
 		--cap-drop=ALL \
 		--security-opt=no-new-privileges:true \
@@ -177,14 +177,14 @@ src)
 		-v "$(pwd):/workspace" \
 		-w /workspace \
 		"${src_image}" \
-		sh -eu -c 'cd src && go test -v ./...'
+		sh -eu -c 'cd src && go test -v ./... && go build -trimpath -buildvcs=false ./cmd/app'
 
 	printf '\n==> Test summary\n'
 	# Summaries make CI and local output easier to scan.
 	printf '%s\n' "Image: ${src_image}"
 	printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"
 	printf '%s\n' 'Workspace: src'
-	printf '%s\n' 'Results: lint passed, tests passed'
+	printf '%s\n' 'Results: lint passed, tests passed, build passed'
 	;;
 template)
 	# Validate that the template wiring, documentation, and release outputs stay in sync.

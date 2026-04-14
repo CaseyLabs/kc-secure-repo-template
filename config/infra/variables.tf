@@ -169,8 +169,8 @@ variable "required_status_checks" {
   description = "Status checks to require before merge. Keep empty until the checks exist."
   type        = list(string)
   default = [
-    "build",
-    "test",
+    "test-src",
+    "test-smoke",
     "scan",
   ]
 }
