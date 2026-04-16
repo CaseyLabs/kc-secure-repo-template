@@ -1,114 +1,128 @@
 ---
 name: security-review
-description: Repository-grounded security review that combines threat modeling, abuse-path analysis, security best-practice review, and remediation guidance. Use when Codex is asked to threat model a codebase or path, produce a security review or security report, identify security weaknesses, suggest secure-by-default implementations, or improve a project’s security posture. Treat threat modeling as language and platform agnostic. Use bundled framework references when they match the stack, and otherwise fall back to broadly applicable security analysis. Do not trigger for general architecture summaries, non-security debugging, or routine code review.
+description: |
+  Manual-only skill.
+
+  Use ONLY when the user explicitly invokes:
+  $security-review
+
+  Never select this skill via semantic matching.
 ---
 
 # Security Review
 
-Deliver security work that is specific to the repository and the user request. Ground architectural and code-level claims in repo evidence, keep assumptions explicit, and prioritize realistic abuse paths and high-impact weaknesses over generic checklists.
+## Activation guard
 
-## Quick Start
+If "$security-review" is NOT present in the user request:
+- Exit immediately
+- Do not analyze anything
+- Do not load references
 
-1. Determine the requested mode:
-   - Threat model for a repo or subpath
-   - Best-practice security review
-   - Secure-by-default implementation while writing code
-   - Remediation after a security report
-2. Identify the in-scope paths, runtime entrypoints, deployment assumptions, and internet exposure.
-3. Detect all primary languages and frameworks in scope. For web apps, check both frontend and backend.
-4. Load only the relevant reference files from `references/`.
-5. Keep runtime behavior separate from CI, build, dev tooling, tests, and examples.
+---
+
+## Token policy
+
+- Default: no reference files
+- Load at most ONE reference file
+- Only load references if strictly required
+- Prefer repo evidence over general guidance
+- Keep output concise and high-signal
+
+---
+
+## Modes
+
+### Light mode (default)
+
+Use for:
+- narrow code paths
+- quick checks
+- implementation guidance
+
+Rules:
+- no references unless absolutely necessary
+- only high-confidence findings
+- minimal output
+
+---
+
+### Full review mode
+
+Use ONLY if explicitly requested (e.g. “full security review”, “threat model”)
+
+Rules:
+- define scope first
+- inspect repo before references
+- load at most one reference initially
+
+---
 
 ## Workflow
 
-### 1. Build the system and technology model
+1. Identify scope (files, components, boundaries)
+2. Locate:
+   - entrypoints
+   - auth boundaries
+   - user input paths
+   - sensitive data handling
+3. Analyze only what is in scope
+4. Escalate only if risk justifies it
 
-- Identify how the project runs: server, CLI, library, worker, or mixed system.
-- Find entrypoints, exposed interfaces, data stores, external integrations, privileged operations, and security-sensitive configuration.
-- Detect the primary languages and frameworks used in scope.
-- Do not claim components, flows, or controls without evidence.
+---
 
-### 2. Choose the review depth
+## Priority risks
 
-- If the user asks for threat modeling, follow the repo-centric threat-model flow and use `references/prompt-template.md` as the output contract.
-- If the user asks for a security review or best-practice report, perform a prioritized code and configuration review using the relevant language or framework references.
-- If the user asks for implementation help, apply the same guidance proactively so new code is secure by default.
-- If the user asks for fixes after a report, address one finding at a time and validate regressions carefully.
+Focus on real, high-impact issues:
 
-### 3. Load references selectively
+- auth / authorization flaws
+- injection risks
+- SSRF / request forgery
+- unsafe parsing / deserialization
+- file upload / path traversal
+- secrets exposure
+- tenant isolation failures
+- insecure defaults
 
-- Threat-model helpers:
-  - `references/prompt-template.md`
-  - `references/security-controls-and-assets.md`
-- Frontend security references:
-  - `references/javascript-general-web-frontend-security.md`
-  - `references/javascript-jquery-web-frontend-security.md`
-  - `references/javascript-typescript-react-web-frontend-security.md`
-  - `references/javascript-typescript-vue-web-frontend-security.md`
-- Backend and server references:
-  - `references/javascript-express-web-server-security.md`
-  - `references/javascript-typescript-nextjs-web-server-security.md`
-  - `references/python-django-web-server-security.md`
-  - `references/python-fastapi-web-server-security.md`
-  - `references/python-flask-web-server-security.md`
-  - `references/golang-general-backend-security.md`
-- Also load any matching `general` reference for the relevant stack when present.
-- If no exact reference exists, continue with language- and platform-agnostic security analysis and make any coverage limitations explicit in reports.
+Ignore:
+- style issues
+- speculative edge cases
+- generic checklists
 
-### 4. Threat-modeling flow
+---
 
-When threat modeling:
+## Output format
 
-1. Extract the system model from repository evidence.
-2. Enumerate trust boundaries, assets, entrypoints, and attacker capabilities.
-3. Generate concrete abuse paths tied to real components and data flows.
-4. Prioritize using explicit likelihood and impact reasoning.
-5. Summarize key assumptions and ask 1 to 3 targeted context questions before the final report.
-6. Produce a concise Markdown report that closely follows `references/prompt-template.md`.
-7. Write the final file as `<repo-or-dir-name>-threat-model.md`.
+For each issue:
 
-Prefer a small number of high-quality threats over a long generic list. Distinguish existing mitigations from recommended mitigations, and tie each recommendation to a concrete boundary, component, or entrypoint.
+- Issue: what is wrong
+- Location: where it is
+- Impact: why it matters
+- Abuse path: how it could be exploited
+- Fix: smallest safe remediation
 
-### 5. Best-practice review flow
+If no issues: say so clearly.
 
-When reviewing an existing codebase for security:
+---
 
-1. Inspect the repo to determine the languages and frameworks in scope.
-2. Read every relevant reference file for those technologies, including both frontend and backend guidance when applicable.
-3. Look for high-impact weaknesses first: authn/authz gaps, unsafe input handling, insecure deserialization or parsing, SSRF-capable fetch flows, secret exposure, privilege boundary failures, multi-tenant isolation issues, sensitive data leaks, weak session handling, unsafe file handling, and impactful DoS risk.
-4. Respect documented project-specific overrides when they are intentional, but note them if they weaken security posture.
-5. Avoid low-signal findings that depend on unrealistic attacker control or out-of-scope deployment assumptions.
+## Reference usage
 
-### 6. Reporting and remediation
+Only if necessary, choose ONE:
 
-When producing a review report:
+- express / node backend
+- nextjs
+- react / frontend
+- vue
+- python (fastapi / django / flask)
+- golang backend
 
-- Ask the user where to write the report when an output file is needed. If they do not care, choose a sensible repo-local Markdown filename and state where it was written.
-- Start with a short executive summary.
-- Organize findings by severity and urgency.
-- Give each finding a numeric ID.
-- Include file and line references for code-backed findings.
-- For critical findings, include a one-sentence impact statement.
-- Summarize the results to the user after writing the file.
+If no strong match → use none
 
-When fixing findings:
+---
 
-- Fix one finding at a time unless the user requests batching.
-- Favor secure defaults that match the existing project architecture.
-- Consider second-order behavior changes before editing.
-- Add only concise comments when they materially clarify the security reason for a change.
-- Run the project’s existing tests, lint, formatters, and type checks when relevant.
+## Hard rules
 
-## Security Review Rules
-
-- Never output secrets. Redact them and describe only their presence and location.
-- Be careful about reporting missing TLS or cookie `Secure` flags in local-development setups; account for actual deployment context before raising that as a finding.
-- Avoid recommending HSTS unless the user explicitly needs that analysis and deployment ownership is clear.
-- Do not overstate severity when attacker preconditions are unrealistic for the system’s real usage.
-- Prefer public non-enumerable identifiers over incrementing IDs for internet-exposed resources when identifier guessing matters.
-
-## Output Expectations
-
-- Threat models should be concise, repo-grounded, and AppSec-oriented.
-- Security review reports should be prioritized, actionable, and easy to fix incrementally.
-- In all modes, anchor findings to evidence and keep assumptions visible.
+- Only run when "$security-review" is present
+- Never trigger implicitly
+- Never scan entire repo unless explicitly asked
+- Never load multiple references unless absolutely required
+- Never inflate output with generic advice
