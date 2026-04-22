@@ -119,6 +119,75 @@ assert_no_nested_dist_dirs() {
 	fi
 }
 
+test_optional_k8s_update_compat() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	mkdir -p "${workdir}/bin"
+	cat >"${workdir}/bin/curl" <<'EOF'
+#!/bin/sh
+printf 'curl should not be called in optional k8s update compatibility test\n' >&2
+exit 1
+EOF
+	chmod +x "${workdir}/bin/curl"
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		sed \
+			-e "/^DEV_K8S_HELM_IMAGE=/d" \
+			-e "/^K8S_CHART_PATH=/d" \
+			-e "/^K8S_RELEASE_NAME=/d" \
+			-e "/^K8S_NAMESPACE=/d" \
+			-e "/^K8S_VALUES_FILE=/d" \
+			-e "/^K8S_IMAGE_REPOSITORY=/d" \
+			-e "/^K8S_IMAGE_TAG=/d" \
+			-e "s#^DEV_BASE_IMAGE=.*#DEV_BASE_IMAGE='${DEV_BASE_IMAGE_LOCK}'#" \
+			-e "s#^DEV_GO_IMAGE=.*#DEV_GO_IMAGE='${DEV_GO_IMAGE_LOCK}'#" \
+			-e "s#^DEV_TERRAFORM_IMAGE=.*#DEV_TERRAFORM_IMAGE='${DEV_TERRAFORM_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_GITLEAKS_IMAGE=.*#DEV_SCAN_GITLEAKS_IMAGE='${DEV_SCAN_GITLEAKS_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_ACTIONLINT_IMAGE=.*#DEV_SCAN_ACTIONLINT_IMAGE='${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_TRIVY_IMAGE=.*#DEV_SCAN_TRIVY_IMAGE='${DEV_SCAN_TRIVY_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_SYFT_IMAGE=.*#DEV_SCAN_SYFT_IMAGE='${DEV_SCAN_SYFT_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_GRYPE_IMAGE=.*#DEV_SCAN_GRYPE_IMAGE='${DEV_SCAN_GRYPE_IMAGE_LOCK}'#" \
+			-e "s#^DEV_RENOVATE_IMAGE=.*#DEV_RENOVATE_IMAGE='${DEV_RENOVATE_IMAGE_LOCK}'#" \
+			config/project.cfg >config/project.cfg.test
+		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test >/tmp/template-update-optional-k8s.txt
+		grep -q "^DEV_K8S_HELM_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S Helm lock when the optional setting is absent'
+	)
+	rm -rf "${workdir}"
+}
+
+test_optional_k8s_scan_skip() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		rm -rf config/k8s
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		sed \
+			-e "/^DEV_K8S_HELM_IMAGE=/d" \
+			-e "/^K8S_CHART_PATH=/d" \
+			-e "/^K8S_RELEASE_NAME=/d" \
+			-e "/^K8S_NAMESPACE=/d" \
+			-e "/^K8S_VALUES_FILE=/d" \
+			-e "/^K8S_IMAGE_REPOSITORY=/d" \
+			-e "/^K8S_IMAGE_TAG=/d" \
+			config/project.cfg >config/project.cfg.test
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >/tmp/template-scan-optional-k8s.txt
+		grep -q 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan' /tmp/template-scan-optional-k8s.txt || fail 'scan should report when it skips the optional Kubernetes scaffold'
+		grep -q 'No rendered Kubernetes manifests available; skipping Trivy config scan' /tmp/template-scan-optional-k8s.txt || fail 'scan should skip the Kubernetes Trivy pass when nothing was rendered'
+	)
+	rm -rf "${workdir}"
+}
+
 case "${mode}" in
 src)
 	# Validate the default bundled Go example the same way a derived repo would.
@@ -192,6 +261,7 @@ template)
 		sh -n "${path}"
 	done
 	[ ! -d scripts/lib ] || fail 'scripts/lib should not exist'
+	. ./config/lockfile.cfg
 	make help >/tmp/template-help.txt
 	grep -q 'Available targets' /tmp/template-help.txt || fail 'make help output is missing the target list'
 	make -n build | grep -q 'sh scripts/build.sh "' || fail 'make build should call scripts/build.sh'
@@ -203,6 +273,8 @@ template)
 	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
 	check_workflow_action_pins
 	assert_no_nested_dist_dirs
+	test_optional_k8s_update_compat
+	test_optional_k8s_scan_skip
 	rm -rf dist
 	# `make example` should exercise the demo without leaving release artifacts behind.
 	PROJECT_CFG_FILE=config/project.cfg make example >/tmp/template-example.txt

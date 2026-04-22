@@ -38,7 +38,7 @@ It does not contact a Kubernetes cluster or perform `helm install`.
   - `K8S_NAMESPACE`
   - `K8S_VALUES_FILE`
   - `K8S_IMAGE_REPOSITORY`
-  - `K8S_IMAGE_TAG`
+  - `K8S_IMAGE_TAG` set this to an explicit image version or digest-backed release tag
 - `config/k8s/chart/values.yaml`
 - `config/k8s/chart/templates/*.yaml`
 

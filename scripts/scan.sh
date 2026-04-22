@@ -122,8 +122,21 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	"${project_image}" \
 	sh -eu -c 'find scripts -type f -name '"'"'*.sh'"'"' -print | LC_ALL=C sort | while IFS= read -r path; do sh -n "${path}"; done && sh ./scripts/template.sh manifest'
 
-printf '\n==> Render Kubernetes manifests\n'
-sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >/tmp/k8s-scan.txt
+k8s_chart_path=${K8S_CHART_PATH:-config/k8s/chart}
+case "${k8s_chart_path}" in
+/* | ./* | ../*) ;;
+*) k8s_chart_path="./${k8s_chart_path}" ;;
+esac
+k8s_helm_image=${DEV_K8S_HELM_IMAGE_LOCK:-${DEV_K8S_HELM_IMAGE:-}}
+
+if [ -n "${k8s_helm_image}" ] && [ -d "${k8s_chart_path}" ]; then
+	printf '\n==> Render Kubernetes manifests\n'
+	sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >/tmp/k8s-scan.txt
+else
+	printf '\n==> Skip Kubernetes manifest scan\n'
+	printf '%s\n' 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan'
+	rm -f /tmp/k8s-scan.txt
+fi
 
 # Secret scanning is security-sensitive, so require a digest-pinned scanner image.
 secret_scan_image=${DEV_SCAN_GITLEAKS_IMAGE_LOCK}
@@ -210,22 +223,26 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	/workspace
 
 printf '\n==> Run Kubernetes manifest scan\n'
-docker run --rm --user "${docker_uid}:${docker_gid}" \
-	--cap-drop=ALL \
-	--security-opt=no-new-privileges:true \
-	-e HOME="${docker_home}" \
-	-e XDG_CACHE_HOME="${docker_cache_home}" \
-	-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
-	-v "${docker_home_source}:${docker_home}" \
-	-v "${docker_tmpdir}:/tmp" \
-	-v "$(pwd):/workspace" \
-	-w /workspace \
-	"${trivy_scan_image}" \
-	config \
-	--severity HIGH,CRITICAL \
-	--exit-code 1 \
-	--skip-version-check \
-	/workspace/.tmp/k8s/rendered
+if [ -f /tmp/k8s-scan.txt ]; then
+	docker run --rm --user "${docker_uid}:${docker_gid}" \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges:true \
+		-e HOME="${docker_home}" \
+		-e XDG_CACHE_HOME="${docker_cache_home}" \
+		-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
+		-v "${docker_home_source}:${docker_home}" \
+		-v "${docker_tmpdir}:/tmp" \
+		-v "$(pwd):/workspace" \
+		-w /workspace \
+		"${trivy_scan_image}" \
+		config \
+		--severity HIGH,CRITICAL \
+		--exit-code 1 \
+		--skip-version-check \
+		/workspace/.tmp/k8s/rendered
+else
+	printf '%s\n' 'No rendered Kubernetes manifests available; skipping Trivy config scan'
+fi
 
 printf '\n==> Check workflow pins\n'
 # Finally, verify that workflow action references stay fully pinned and documented.
