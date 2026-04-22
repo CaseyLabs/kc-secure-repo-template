@@ -198,10 +198,64 @@ test_k8s_render_file_scan_path() {
 		mkdir -p fake-bin
 		cat >fake-bin/docker <<'EOF'
 #!/bin/sh
+set -eu
+
 printf '%s\n' "$*" >>docker.log
-exit 0
+
+cmd=''
+while [ "$#" -gt 0 ]; do
+	if [ "$1" = "-c" ]; then
+		shift
+		cmd=${1:-}
+		break
+	fi
+	shift
+done
+
+[ -z "${cmd}" ] && exit 0
+PATH="$(pwd)/fake-bin:${PATH}" sh -eu -c "${cmd}"
 EOF
-		chmod +x fake-bin/docker
+		cat >fake-bin/helm <<'EOF'
+#!/bin/sh
+set -eu
+
+case "$1" in
+lint)
+	exit 0
+	;;
+template)
+	release=$2
+	printf 'release: %s\n' "${release}"
+	;;
+package)
+	shift
+	chart=''
+	destination=''
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--destination)
+			shift
+			destination=${1:-}
+			;;
+		*)
+			if [ -z "${chart}" ]; then
+				chart=$1
+			fi
+			;;
+		esac
+		shift
+	done
+	[ -n "${chart}" ] || exit 1
+	[ -n "${destination}" ] || exit 1
+	mkdir -p "${destination}"
+	tar -C "$(dirname "${chart}")" -czf "${destination}/custom-release-0.1.0.tgz" "$(basename "${chart}")"
+	;;
+*)
+exit 0
+	;;
+esac
+EOF
+		chmod +x fake-bin/docker fake-bin/helm
 		cat >config/project.cfg.test <<'EOF'
 . ./config/project.cfg
 K8S_RENDER_DIR='out/k8s/rendered'
@@ -498,6 +552,29 @@ EOF
 	PROJECT_CFG_FILE=config/project.cfg K8S_VALUES_FILE=/tmp/template-k8s-values.yaml make k8s >/tmp/template-k8s-custom-port.txt
 	grep -q 'containerPort: 8080' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should keep the container port independent from the Service port'
 	grep -q 'port: 80' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should allow the Service port to differ from the container port'
+	external_render_dir=$(mktemp -d)
+	external_package_dir=$(mktemp -d)
+	cat >/tmp/template-k8s-external-values.yaml <<'EOF'
+container:
+  port: 9090
+EOF
+	PROJECT_CFG_FILE=config/project.cfg \
+		K8S_VALUES_FILE=/tmp/template-k8s-external-values.yaml \
+		K8S_RENDER_DIR="${external_render_dir}" \
+		K8S_PACKAGE_DIR="${external_package_dir}" \
+		make k8s >/tmp/template-k8s-external-paths.txt
+	[ -f "${external_render_dir}/kc-secure-template.yaml" ] || fail 'make k8s should write rendered manifests to an external K8S_RENDER_DIR'
+	grep -q 'containerPort: 9090' "${external_render_dir}/kc-secure-template.yaml" || fail 'make k8s should apply an external K8S_VALUES_FILE override'
+	find "${external_package_dir}" -maxdepth 1 -type f -name '*.tgz' | grep -q . || fail 'make k8s should package charts into an external K8S_PACKAGE_DIR'
+	rm -rf "${external_render_dir}" "${external_package_dir}"
+	sed \
+		-e "s/^PROJECT_NAME='kc-secure-template'/PROJECT_NAME='My_App'/" \
+		-e "s#^PROJECT_IMAGE=.*#PROJECT_IMAGE='ghcr.io/example/my-app:local'#" \
+		config/project.cfg >/tmp/template-k8s-sanitized.cfg
+	sh ./scripts/k8s.sh /tmp/template-k8s-sanitized.cfg >/tmp/template-k8s-sanitized.txt
+	[ -f .tmp/k8s/rendered/my-app.yaml ] || fail 'make k8s should sanitize the default release name for non-DNS-safe project names'
+	grep -q 'app.kubernetes.io/instance: my-app' .tmp/k8s/rendered/my-app.yaml || fail 'make k8s should render a DNS-safe default release label for non-DNS-safe project names'
+	grep -q 'app.kubernetes.io/name: my-app' .tmp/k8s/rendered/my-app.yaml || fail 'make k8s should sanitize the default chart app name for non-DNS-safe project names'
 	cat >/tmp/template-k8s-digest.cfg <<'EOF'
 . ./config/project.cfg
 K8S_IMAGE_REPOSITORY='ghcr.io/example/app'

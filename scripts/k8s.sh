@@ -13,7 +13,46 @@ esac
 	exit 1
 }
 
+env_k8s_chart_path=${K8S_CHART_PATH-}
+env_k8s_chart_path_set=${K8S_CHART_PATH+x}
+env_k8s_release_name=${K8S_RELEASE_NAME-}
+env_k8s_release_name_set=${K8S_RELEASE_NAME+x}
+env_k8s_namespace=${K8S_NAMESPACE-}
+env_k8s_namespace_set=${K8S_NAMESPACE+x}
+env_k8s_values_file=${K8S_VALUES_FILE-}
+env_k8s_values_file_set=${K8S_VALUES_FILE+x}
+env_k8s_name_override=${K8S_NAME_OVERRIDE-}
+env_k8s_name_override_set=${K8S_NAME_OVERRIDE+x}
+env_k8s_image_repository=${K8S_IMAGE_REPOSITORY-}
+env_k8s_image_repository_set=${K8S_IMAGE_REPOSITORY+x}
+env_k8s_image_tag=${K8S_IMAGE_TAG-}
+env_k8s_image_tag_set=${K8S_IMAGE_TAG+x}
+env_k8s_package_dir=${K8S_PACKAGE_DIR-}
+env_k8s_package_dir_set=${K8S_PACKAGE_DIR+x}
+env_k8s_render_dir=${K8S_RENDER_DIR-}
+env_k8s_render_dir_set=${K8S_RENDER_DIR+x}
+
 . "${project_cfg_file}"
+
+[ "${env_k8s_chart_path_set}" = x ] && K8S_CHART_PATH=${env_k8s_chart_path}
+[ "${env_k8s_release_name_set}" = x ] && K8S_RELEASE_NAME=${env_k8s_release_name}
+[ "${env_k8s_namespace_set}" = x ] && K8S_NAMESPACE=${env_k8s_namespace}
+[ "${env_k8s_values_file_set}" = x ] && K8S_VALUES_FILE=${env_k8s_values_file}
+[ "${env_k8s_name_override_set}" = x ] && K8S_NAME_OVERRIDE=${env_k8s_name_override}
+[ "${env_k8s_image_repository_set}" = x ] && K8S_IMAGE_REPOSITORY=${env_k8s_image_repository}
+[ "${env_k8s_image_tag_set}" = x ] && K8S_IMAGE_TAG=${env_k8s_image_tag}
+[ "${env_k8s_package_dir_set}" = x ] && K8S_PACKAGE_DIR=${env_k8s_package_dir}
+[ "${env_k8s_render_dir_set}" = x ] && K8S_RENDER_DIR=${env_k8s_render_dir}
+
+sanitize_k8s_name() {
+	printf '%s' "$1" |
+		tr '[:upper:]' '[:lower:]' |
+		tr -cs 'a-z0-9' '-' |
+		sed -e 's/^-*//' -e 's/-*$//'
+}
+
+default_k8s_name=$(sanitize_k8s_name "${PROJECT_NAME:-}")
+[ -n "${default_k8s_name}" ] || default_k8s_name=app
 
 # Use the locked Helm image when available so local output stays aligned with
 # the repository's reproducible toolchain. Helm is the templating/packaging tool
@@ -22,14 +61,15 @@ helm_image=${DEV_K8S_HELM_IMAGE_LOCK:-${DEV_K8S_HELM_IMAGE}}
 # The chart is the Kubernetes package we lint, render, and package below.
 chart_path=${K8S_CHART_PATH:-config/k8s/chart}
 # A Helm "release" is one installed instance of a chart.
-release_name=${K8S_RELEASE_NAME:-kc-secure-template}
+release_name=${K8S_RELEASE_NAME:-${default_k8s_name}}
+[ -n "${release_name}" ] || release_name=kc-secure-template
 # Kubernetes namespaces partition resources inside a cluster.
 namespace=${K8S_NAMESPACE:-default}
 # An optional values file lets callers override chart defaults without editing
 # the chart itself, which is the standard Helm customization pattern.
 values_file=${K8S_VALUES_FILE:-}
-name_override=${K8S_NAME_OVERRIDE:-${PROJECT_NAME:-}}
-chart_name=${PROJECT_NAME:-app}
+name_override=${K8S_NAME_OVERRIDE:-${default_k8s_name}}
+chart_name=${K8S_CHART_NAME:-${default_k8s_name}}
 image_repository=${K8S_IMAGE_REPOSITORY:-}
 image_tag=${K8S_IMAGE_TAG:-}
 package_dir=${K8S_PACKAGE_DIR:-.tmp/k8s/package}
@@ -77,7 +117,6 @@ if [ -z "${image_repository}" ] || [ -z "${image_tag}" ]; then
 	[ -n "${image_tag}" ] || image_tag=${project_image_tag:-latest}
 fi
 
-values_args=''
 if [ -n "${values_file}" ]; then
 	case "${values_file}" in
 	/* | ./* | ../*) ;;
@@ -87,8 +126,8 @@ if [ -n "${values_file}" ]; then
 		printf 'missing values file: %s\n' "${values_file}" >&2
 		exit 1
 	}
-	values_args="--values ${values_file}"
 fi
+values_args=''
 
 name_override_args=''
 if [ -n "${name_override}" ]; then
@@ -115,6 +154,17 @@ trap cleanup EXIT INT TERM HUP
 
 staged_chart_path="${chart_stage_dir}/chart"
 cp -R "${chart_path}" "${staged_chart_path}"
+
+staged_render_dir="${chart_stage_dir}/rendered"
+staged_package_dir="${chart_stage_dir}/package"
+staged_render_file="${staged_render_dir}/${release_name}.yaml"
+mkdir -p "${staged_render_dir}" "${staged_package_dir}"
+
+if [ -n "${values_file}" ]; then
+	staged_values_file="${chart_stage_dir}/values.override.yaml"
+	cp "${values_file}" "${staged_values_file}"
+	values_args="--values ${staged_values_file}"
+fi
 
 chart_yaml_tmp="${chart_stage_dir}/Chart.yaml.tmp"
 # Rewrite the staged chart name so the packaged chart follows the project
@@ -170,7 +220,9 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm template '${release_name}' '${staged_chart_path}' --namespace '${namespace}' ${values_args} ${name_override_args} --set-string image.repository='${image_repository}' --set-string image.tag='${image_tag}' > '${render_file}'"
+	-eu -c "helm template '${release_name}' '${staged_chart_path}' --namespace '${namespace}' ${values_args} ${name_override_args} --set-string image.repository='${image_repository}' --set-string image.tag='${image_tag}' > '${staged_render_file}'"
+
+cp "${staged_render_file}" "${render_file}"
 
 printf '\n==> Package Kubernetes Helm chart\n'
 # `helm package` produces a distributable `.tgz` chart archive, which is the
@@ -187,7 +239,14 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm package '${staged_chart_path}' --destination '${package_dir}'"
+	-eu -c "helm package '${staged_chart_path}' --destination '${staged_package_dir}'"
+
+set -- "${staged_package_dir}"/*.tgz
+[ -e "$1" ] || {
+	printf 'helm package did not create an archive in %s\n' "${staged_package_dir}" >&2
+	exit 1
+}
+cp "$@" "${package_dir}/"
 
 printf '\n==> Kubernetes summary\n'
 printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"

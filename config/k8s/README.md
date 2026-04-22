@@ -48,6 +48,7 @@ server-side dry-run so it does not persist resources.
   - `K8S_RELEASE_NAME`
   - `K8S_NAME_OVERRIDE`
   - `K8S_NAMESPACE`
+  - `K8S_PACKAGE_DIR`
   - `K8S_RENDER_DIR`
   - `K8S_VALUES_FILE`
   - `K8S_IMAGE_REPOSITORY`
@@ -64,6 +65,9 @@ server-side dry-run so it does not persist resources.
 By default, `K8S_NAME_OVERRIDE` follows `PROJECT_NAME`, so the chart's
 `app.kubernetes.io/name` label derives from the repository config without
 hard-coding project-specific names into `values.yaml`.
+
+`K8S_VALUES_FILE`, `K8S_RENDER_DIR`, and `K8S_PACKAGE_DIR` may be either
+repository-relative paths or absolute host paths.
 
 Keep Kubernetes-specific static assets in `config/k8s/`. Put execution glue in
 `scripts/` only when it needs to participate in the root `make` interface.
