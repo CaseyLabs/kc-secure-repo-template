@@ -1,0 +1,83 @@
+# `values.yaml` holds the default settings for the Helm chart. New deployments
+# usually customize these values instead of editing the templates directly.
+replicaCount: 1
+
+# `nameOverride` and `fullnameOverride` affect generated Kubernetes object
+# names. Leave them empty unless you need shorter or different resource names.
+nameOverride: ""
+fullnameOverride: ""
+
+container:
+  # This is the port the app listens on inside the container.
+  port: 8080
+
+image:
+  # Kubernetes pulls this container image when starting Pods for the Deployment.
+  repository: kc-secure-template
+  tag: 0.1.0
+  # `IfNotPresent` avoids re-pulling the image when the same tag already exists
+  # on a node. For always-changing tags like `latest`, `Always` is more common.
+  pullPolicy: IfNotPresent
+
+service:
+  # `ClusterIP` exposes the app on an internal cluster-only virtual IP.
+  # It is the usual default when traffic should come through an Ingress.
+  type: ClusterIP
+  # This is the port the Service exposes inside the cluster.
+  port: 8080
+
+ingress:
+  # Ingress is off by default because many clusters need ingress-controller-
+  # specific setup before external HTTP routing will work.
+  enabled: false
+  # Some clusters require an ingress class such as `nginx` so the right
+  # controller knows it should manage this Ingress object.
+  className: ""
+  annotations: {}
+  hosts:
+    - host: example.local
+      paths:
+        - path: /
+          # `Prefix` means this rule matches this path and anything below it.
+          pathType: Prefix
+  # TLS entries are optional. They usually map a host name to a Kubernetes
+  # Secret that contains the TLS certificate and private key.
+  tls: []
+
+# Pod annotations are arbitrary metadata. Many platforms and observability
+# tools use them for scraping, policy, or sidecar injection.
+podAnnotations: {}
+
+podSecurityContext:
+  # Run as a non-root user unless the container image truly requires root.
+  runAsNonRoot: true
+  seccompProfile:
+    # `RuntimeDefault` applies the container runtime's default syscall filter.
+    type: RuntimeDefault
+
+securityContext:
+  # Keep the container locked down by default. These are conservative settings
+  # that many stateless web services can use unchanged.
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  # Resource requests help Kubernetes schedule the Pod onto a node with enough
+  # CPU and memory. Limits cap how much the container may consume.
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# These are optional advanced scheduling controls:
+# - `nodeSelector` pins Pods to nodes with matching labels
+# - `affinity` expresses preferred or required placement rules
+# - `tolerations` let Pods run on nodes with matching taints
+nodeSelector: {}
+affinity: {}
+tolerations: []

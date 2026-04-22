@@ -119,6 +119,565 @@ assert_no_nested_dist_dirs() {
 	fi
 }
 
+test_optional_k8s_update_compat() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	mkdir -p "${workdir}/bin"
+	cat >"${workdir}/bin/curl" <<'EOF'
+#!/bin/sh
+printf 'curl should not be called in optional k8s update compatibility test\n' >&2
+exit 1
+EOF
+	chmod +x "${workdir}/bin/curl"
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		sed \
+			-e "/^DEV_K8S_HELM_IMAGE=/d" \
+			-e "/^DEV_K8S_KUBECTL_IMAGE=/d" \
+			-e "/^K8S_CHART_PATH=/d" \
+			-e "/^K8S_RELEASE_NAME=/d" \
+			-e "/^K8S_NAMESPACE=/d" \
+			-e "/^K8S_VALUES_FILE=/d" \
+			-e "/^K8S_IMAGE_REPOSITORY=/d" \
+			-e "/^K8S_IMAGE_TAG=/d" \
+			-e "s#^DEV_BASE_IMAGE=.*#DEV_BASE_IMAGE='${DEV_BASE_IMAGE_LOCK}'#" \
+			-e "s#^DEV_GO_IMAGE=.*#DEV_GO_IMAGE='${DEV_GO_IMAGE_LOCK}'#" \
+			-e "s#^DEV_TERRAFORM_IMAGE=.*#DEV_TERRAFORM_IMAGE='${DEV_TERRAFORM_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_GITLEAKS_IMAGE=.*#DEV_SCAN_GITLEAKS_IMAGE='${DEV_SCAN_GITLEAKS_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_ACTIONLINT_IMAGE=.*#DEV_SCAN_ACTIONLINT_IMAGE='${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_TRIVY_IMAGE=.*#DEV_SCAN_TRIVY_IMAGE='${DEV_SCAN_TRIVY_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_SYFT_IMAGE=.*#DEV_SCAN_SYFT_IMAGE='${DEV_SCAN_SYFT_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_GRYPE_IMAGE=.*#DEV_SCAN_GRYPE_IMAGE='${DEV_SCAN_GRYPE_IMAGE_LOCK}'#" \
+			-e "s#^DEV_RENOVATE_IMAGE=.*#DEV_RENOVATE_IMAGE='${DEV_RENOVATE_IMAGE_LOCK}'#" \
+			config/project.cfg >config/project.cfg.test
+		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test >/tmp/template-update-optional-k8s.txt
+		grep -q "^DEV_K8S_HELM_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S Helm lock when the optional setting is absent'
+		grep -q "^DEV_K8S_KUBECTL_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S kubectl lock when the optional setting is absent'
+	)
+	rm -rf "${workdir}"
+}
+
+test_optional_k8s_scan_skip() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		rm -rf config/k8s
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		sed \
+			-e "/^DEV_K8S_HELM_IMAGE=/d" \
+			-e "/^DEV_K8S_KUBECTL_IMAGE=/d" \
+			-e "/^K8S_CHART_PATH=/d" \
+			-e "/^K8S_RELEASE_NAME=/d" \
+			-e "/^K8S_NAMESPACE=/d" \
+			-e "/^K8S_VALUES_FILE=/d" \
+			-e "/^K8S_IMAGE_REPOSITORY=/d" \
+			-e "/^K8S_IMAGE_TAG=/d" \
+			config/project.cfg >config/project.cfg.test
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >/tmp/template-scan-optional-k8s.txt
+		grep -q 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan' /tmp/template-scan-optional-k8s.txt || fail 'scan should report when it skips the optional Kubernetes scaffold'
+		grep -q 'No rendered Kubernetes manifests available; skipping Trivy config scan' /tmp/template-scan-optional-k8s.txt || fail 'scan should skip the Kubernetes Trivy pass when nothing was rendered'
+	)
+	rm -rf "${workdir}"
+}
+
+test_k8s_shell_inputs_are_not_executed() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+set -eu
+
+printf '%s\n' "$*" >>docker.log
+for arg in "$@"; do
+	[ "$arg" != "-c" ] || exit 97
+done
+
+if [ "${1:-}" = "run" ]; then
+	shift
+fi
+
+image=''
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--rm | --cap-drop=* | --security-opt=*)
+		shift
+		continue
+		;;
+	-e | -v | -w | --user)
+		shift
+		[ "$#" -gt 0 ] && shift
+		continue
+		;;
+	*)
+		image=$1
+		shift
+		break
+		;;
+	esac
+done
+
+[ -n "${image}" ] || exit 1
+case "${image}" in
+*helm*)
+	if [ "${1:-}" = "package" ]; then
+		shift
+		shift
+		destination=''
+		while [ "$#" -gt 0 ]; do
+			if [ "$1" = "--destination" ]; then
+				shift
+				destination=${1:-}
+				break
+			fi
+			shift
+		done
+		[ -n "${destination}" ] || exit 1
+		mkdir -p "${destination}"
+		: >"${destination}/fake-chart-0.1.0.tgz"
+		exit 0
+	fi
+	image="$(pwd)/fake-bin/fake-helm"
+	;;
+esac
+PATH="$(pwd)/fake-bin:${PATH}" "${image}" "$@"
+EOF
+		cat >fake-bin/fake-helm <<'EOF'
+#!/bin/sh
+set -eu
+
+subcommand=${1:-}
+shift
+case "${subcommand}" in
+lint)
+	exit 0
+	;;
+template)
+	release=${1:-}
+	chart=${2:-}
+	shift 2
+	printf 'release: %s\n' "${release}"
+	printf 'chart: %s\n' "${chart}"
+	printf 'args:'
+	for arg in "$@"; do
+		printf ' [%s]' "${arg}"
+	done
+	printf '\n'
+	;;
+	package)
+		exit 0
+		;;
+*)
+	exit 1
+	;;
+esac
+EOF
+		chmod +x fake-bin/docker fake-bin/fake-helm
+		cat >/tmp/template-k8s-shell-values.yaml <<'EOF'
+container:
+  port: 8080
+EOF
+		cat >config/project.cfg.test <<'EOF'
+. ./config/project.cfg
+DEV_K8S_HELM_IMAGE='fake-helm'
+K8S_NAME_OVERRIDE='safe; touch /tmp/template-k8s-shell-proof #'
+K8S_VALUES_FILE='/tmp/template-k8s-shell-values.yaml'
+EOF
+		rm -f /tmp/template-k8s-shell-proof
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/k8s.sh config/project.cfg.test >/tmp/template-k8s-shell-safe.txt
+		[ ! -f /tmp/template-k8s-shell-proof ] || fail 'k8s should not execute shell metacharacters from project config values'
+		grep -F -- 'nameOverride=safe; touch /tmp/template-k8s-shell-proof #' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'k8s should pass unsafe-looking overrides as literal Helm arguments'
+	)
+	rm -rf "${workdir}"
+}
+
+test_k8s_render_file_scan_path() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+set -eu
+
+printf '%s\n' "$*" >>docker.log
+
+case "${1:-}" in
+run)
+	shift
+	;;
+*)
+	exit 0
+	;;
+esac
+
+image=''
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--rm | --cap-drop=* | --security-opt=*)
+		shift
+		continue
+		;;
+	-e | -v | -w | --user)
+		shift
+		[ "$#" -gt 0 ] && shift
+		continue
+		;;
+	*)
+		image=$1
+		shift
+		break
+		;;
+	esac
+done
+
+[ -n "${image}" ] || exit 0
+case "${image}" in
+*helm*)
+	image="$(pwd)/fake-bin/helm"
+	;;
+*)
+	exit 0
+	;;
+esac
+PATH="$(pwd)/fake-bin:${PATH}" "${image}" "$@"
+EOF
+		cat >fake-bin/helm <<'EOF'
+#!/bin/sh
+set -eu
+
+case "$1" in
+lint)
+	exit 0
+	;;
+template)
+	release=$2
+	printf 'release: %s\n' "${release}"
+	;;
+package)
+	shift
+	chart=''
+	destination=''
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--destination)
+			shift
+			destination=${1:-}
+			;;
+		*)
+			if [ -z "${chart}" ]; then
+				chart=$1
+			fi
+			;;
+		esac
+		shift
+	done
+	[ -n "${chart}" ] || exit 1
+	[ -n "${destination}" ] || exit 1
+	mkdir -p "${destination}"
+	tar -C "$(dirname "${chart}")" -czf "${destination}/custom-release-0.1.0.tgz" "$(basename "${chart}")"
+	;;
+*)
+exit 0
+	;;
+esac
+EOF
+		chmod +x fake-bin/docker fake-bin/helm
+		cat >config/project.cfg.test <<'EOF'
+. ./config/project.cfg
+K8S_RENDER_DIR='out/k8s/rendered'
+K8S_RELEASE_NAME='custom-release'
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" \
+			sh ./scripts/scan.sh config/project.cfg.test >/tmp/template-scan-render-dir.txt
+		grep -F -- '/tmp/k8s-scan-manifest.' docker.log || fail 'scan should stage the rendered Kubernetes manifest into the mounted temp directory'
+		grep -F -- '/tmp/k8s-scan-manifest.' docker.log | grep -F -- 'custom-release.yaml' >/dev/null || fail 'scan should pass the rendered Kubernetes manifest basename to Trivy'
+		! grep -F -- '/workspace/out/k8s/rendered' docker.log >/dev/null 2>&1 || fail 'scan should not assume the render directory is mounted inside the scanner container'
+		: >docker.log
+		absolute_render_dir=$(mktemp -d "${workdir}/external-render.XXXXXX")
+		cat >config/project.cfg.absolute <<EOF
+. ./config/project.cfg
+PROJECT_NAME='Derived_App'
+PROJECT_IMAGE='registry.example.com/derived-app:local'
+DEV_K8S_HELM_IMAGE='fake/helm:latest'
+K8S_RELEASE_NAME=''
+K8S_RENDER_DIR='${absolute_render_dir}'
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" \
+			sh ./scripts/scan.sh config/project.cfg.absolute >/tmp/template-scan-absolute-render-dir.txt
+		[ -f "${absolute_render_dir}/derived-app.yaml" ] || fail 'scan should rely on the manifest path rendered by k8s.sh when K8S_RELEASE_NAME is omitted'
+		grep -F -- '/tmp/k8s-scan-manifest.' docker.log | grep -F -- 'derived-app.yaml' >/dev/null || fail 'scan should stage the derived release-name manifest for Trivy'
+		! grep -F -- "${absolute_render_dir}" docker.log >/dev/null 2>&1 || fail 'scan should not pass an absolute host render directory directly into the scanner container'
+	)
+	rm -rf "${workdir}"
+}
+
+test_k8s_chart_packaging_uses_project_defaults() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+set -eu
+
+if [ "${1:-}" = "run" ]; then
+	shift
+fi
+
+image=''
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--rm | --cap-drop=* | --security-opt=*)
+		shift
+		continue
+		;;
+	-e | -v | -w | --user)
+		shift
+		[ "$#" -gt 0 ] && shift
+		continue
+		;;
+	*)
+		image=$1
+		shift
+		break
+		;;
+	esac
+done
+
+[ -n "${image}" ] || exit 1
+case "${image}" in
+*helm*)
+	image="$(pwd)/fake-bin/helm"
+	;;
+esac
+PATH="$(pwd)/fake-bin:${PATH}" "${image}" "$@"
+EOF
+		cat >fake-bin/helm <<'EOF'
+#!/bin/sh
+set -eu
+
+yaml_value() {
+	file=$1
+	key=$2
+	awk -F': ' -v key="${key}" '$1 == key { print $2; exit }' "${file}"
+}
+
+image_value() {
+	file=$1
+	key=$2
+	awk -v key="${key}" '
+		/^image:/ { in_image = 1; next }
+		in_image && /^[^[:space:]]/ { in_image = 0 }
+		in_image && $1 == key ":" { print $2; exit }
+	' "${file}"
+}
+
+set_string_value() {
+	key=$1
+	shift
+
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--set-string)
+			shift
+			[ "$#" -gt 0 ] || break
+			case "$1" in
+			"${key}"=*)
+				printf '%s\n' "${1#*=}"
+				return 0
+				;;
+			esac
+			;;
+		esac
+		shift
+	done
+
+	return 1
+}
+
+case "$1" in
+lint)
+	chart=$2
+	[ -f "${chart}/Chart.yaml" ] || exit 1
+	;;
+	template)
+		release=$2
+		chart=$3
+		printf 'release: %s\n' "${release}"
+		printf 'chartName: %s\n' "$(yaml_value "${chart}/Chart.yaml" "name")"
+		printf 'nameOverride: %s\n' "$(set_string_value "nameOverride" "$@" || true)"
+		printf 'imageRepository: %s\n' "$(image_value "${chart}/values.yaml" "repository")"
+		printf 'imageTag: %s\n' "$(image_value "${chart}/values.yaml" "tag")"
+		;;
+package)
+	chart=$2
+	shift 2
+	destination=''
+	while [ "$#" -gt 0 ]; do
+		if [ "$1" = "--destination" ]; then
+			shift
+			destination=$1
+			break
+		fi
+		shift
+	done
+	[ -n "${destination}" ] || exit 1
+	mkdir -p "${destination}"
+	chart_name=$(yaml_value "${chart}/Chart.yaml" "name")
+	chart_version=$(yaml_value "${chart}/Chart.yaml" "version")
+	tar -C "$(dirname "${chart}")" -czf "${destination}/${chart_name}-${chart_version}.tgz" "$(basename "${chart}")"
+	;;
+	*)
+		exit 1
+		;;
+esac
+EOF
+		chmod +x fake-bin/docker fake-bin/helm
+		cat >config/project.cfg.test <<'EOF'
+. ./config/project.cfg
+PROJECT_NAME='Derived_App'
+PROJECT_IMAGE='registry.example.com:5000/derived-app:local'
+DEV_K8S_HELM_IMAGE='fake/helm:latest'
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/k8s.sh config/project.cfg.test >/tmp/template-k8s-staged.txt
+		grep -q '^chartName: derived-app$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should use the project-specific chart metadata'
+		grep -q '^nameOverride: derived-app$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should derive nameOverride from an overridden PROJECT_NAME in layered configs'
+		grep -q '^imageRepository: registry.example.com:5000/derived-app$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should derive the repository from PROJECT_IMAGE without the tag'
+		grep -q '^imageTag: local$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should derive the tag from PROJECT_IMAGE in layered configs when K8S_IMAGE_TAG is unset'
+		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/Chart.yaml | grep -q '^name: derived-app$' || fail 'packaged chart should use the project-specific chart name'
+		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/values.yaml | grep -q '^  repository: registry.example.com:5000/derived-app$' || fail 'packaged chart values should use the PROJECT_IMAGE-derived repository in layered configs'
+		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/values.yaml | grep -q '^  tag: local$' || fail 'packaged chart values should use the PROJECT_IMAGE-derived tag in layered configs'
+	)
+	rm -rf "${workdir}"
+}
+
+test_k8s_test_local_uses_kubeconfig_and_server_dry_run() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		mkdir -p fake-bin fake-kubeconfig config/k8s .tmp/k8s/rendered scripts
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+
+case "$1" in
+run)
+	printf '%s\n' 'service/test-svc'
+	exit 0
+	;;
+esac
+
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		cat >scripts/k8s.sh <<'SCRIPT'
+#!/bin/sh
+set -eu
+PROJECT_CFG_FILE=${1:-config/project.cfg}
+. "${PROJECT_CFG_FILE}"
+
+sanitize_k8s_name() {
+	printf '%s' "$1" |
+		tr '[:upper:]' '[:lower:]' |
+		tr -cs 'a-z0-9' '-' |
+		sed -e 's/^-*//' -e 's/-*$//'
+}
+
+default_k8s_name=$(sanitize_k8s_name "${PROJECT_NAME:-}")
+[ -n "${default_k8s_name}" ] || default_k8s_name=app
+release_name=${K8S_RELEASE_NAME:-${default_k8s_name}}
+[ -n "${release_name}" ] || release_name=kc-secure-template
+render_dir=${K8S_RENDER_DIR:-.tmp/k8s/rendered}
+render_file="${render_dir}/${release_name}.yaml"
+
+mkdir -p "${render_dir}"
+cat >"${render_file}" <<'YAML'
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-svc
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080
+  selector:
+    app: test
+YAML
+if [ -n "${K8S_METADATA_FILE:-}" ]; then
+	cat >"${K8S_METADATA_FILE}" <<METADATA
+K8S_RENDER_FILE='${render_file}'
+METADATA
+fi
+SCRIPT
+		chmod +x scripts/k8s.sh
+		cat >config/project.cfg <<'EOF'
+PROJECT_NAME='kc-secure-template'
+DEV_K8S_KUBECTL_IMAGE='bitnami/kubectl:latest'
+EOF
+		cat >fake-kubeconfig/config <<'EOF'
+apiVersion: v1
+kind: Config
+clusters: []
+contexts: []
+current-context: ''
+users: []
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" \
+			K8S_TEST_LOCAL_KUBECONFIG="${workdir}/fake-kubeconfig/config" \
+			K8S_TEST_LOCAL_CONTEXT='kind-local' \
+			sh ./scripts/k8s-test-local.sh config/project.cfg >/tmp/template-k8s-test-local.txt
+		! grep -F -- ' build ' docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not build a repo-controlled kubectl image'
+		grep -F -- 'bitnami/kubectl:latest' docker.log || fail 'k8s-test-local should run the configured kubectl image'
+		grep -F -- '--dry-run=server' docker.log || fail 'k8s-test-local should use kubectl server-side dry-run'
+		grep -F -- "--context kind-local" docker.log || fail 'k8s-test-local should pass the configured Kubernetes context'
+		! grep -F -- "${workdir}/fake-kubeconfig:/tmp/k8s-test-kubeconfig:ro" docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not mount the original kubeconfig directory'
+		grep -F -- '/tmp/tmp.' docker.log || fail 'k8s-test-local should mount a staged kubeconfig directory'
+		grep -F -- '/tmp/k8s-test-local-manifest.' docker.log | grep -F -- 'kc-secure-template.yaml' >/dev/null || fail 'k8s-test-local should stage the rendered manifest into the mounted temp directory'
+		grep -q 'Resources checked by server-side dry-run: 1' /tmp/template-k8s-test-local.txt || fail 'k8s-test-local should report the dry-run resource count'
+		: >docker.log
+		external_render_dir=$(mktemp -d "${workdir}/external-render.XXXXXX")
+		cat >config/project.cfg.absolute <<EOF
+. ./config/project.cfg
+PROJECT_NAME='Derived_App'
+DEV_K8S_KUBECTL_IMAGE='bitnami/kubectl:latest'
+K8S_RELEASE_NAME=''
+K8S_RENDER_DIR='${external_render_dir}'
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" \
+			K8S_TEST_LOCAL_KUBECONFIG="${workdir}/fake-kubeconfig/config" \
+			sh ./scripts/k8s-test-local.sh config/project.cfg.absolute >/tmp/template-k8s-test-local-absolute.txt
+		[ -f "${external_render_dir}/derived-app.yaml" ] || fail 'k8s-test-local should use the manifest path rendered by k8s.sh when K8S_RELEASE_NAME is omitted'
+		grep -F -- '/tmp/k8s-test-local-manifest.' docker.log | grep -F -- 'derived-app.yaml' >/dev/null || fail 'k8s-test-local should stage the derived release-name manifest for kubectl'
+		! grep -F -- "${external_render_dir}" docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not pass an absolute host render directory directly into the kubectl container'
+	)
+	rm -rf "${workdir}"
+}
+
 case "${mode}" in
 src)
 	# Validate the default bundled Go example the same way a derived repo would.
@@ -192,16 +751,25 @@ template)
 		sh -n "${path}"
 	done
 	[ ! -d scripts/lib ] || fail 'scripts/lib should not exist'
+	. ./config/lockfile.cfg
 	make help >/tmp/template-help.txt
 	grep -q 'Available targets' /tmp/template-help.txt || fail 'make help output is missing the target list'
 	make -n build | grep -q 'sh scripts/build.sh "' || fail 'make build should call scripts/build.sh'
 	make -n test | grep -q 'sh scripts/test.sh "' || fail 'make test should call scripts/test.sh'
 	make -n scan | grep -q 'sh scripts/scan.sh "' || fail 'make scan should call scripts/scan.sh'
+	make -n k8s | grep -q 'sh scripts/k8s.sh "' || fail 'make k8s should call scripts/k8s.sh'
+	make -n k8s-test-local | grep -q 'sh scripts/k8s-test-local.sh "' || fail 'make k8s-test-local should call scripts/k8s-test-local.sh'
 	make -n dist | grep -q 'sh scripts/dist.sh "' || fail 'make dist should call scripts/dist.sh'
 	! grep -qx 'config/project.cfg' .dockerignore || fail '.dockerignore should not exclude tracked config/project.cfg'
 	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
 	check_workflow_action_pins
 	assert_no_nested_dist_dirs
+	test_optional_k8s_update_compat
+	test_optional_k8s_scan_skip
+	test_k8s_shell_inputs_are_not_executed
+	test_k8s_render_file_scan_path
+	test_k8s_chart_packaging_uses_project_defaults
+	test_k8s_test_local_uses_kubeconfig_and_server_dry_run
 	rm -rf dist
 	# `make example` should exercise the demo without leaving release artifacts behind.
 	PROJECT_CFG_FILE=config/project.cfg make example >/tmp/template-example.txt
@@ -213,6 +781,50 @@ template)
 	PROJECT_CFG_FILE=config/project.cfg make infra >/tmp/template-infra.txt
 	[ ! -d dist ] || fail 'make infra should not create root dist'
 	assert_no_nested_dist_dirs
+	PROJECT_CFG_FILE=config/project.cfg make k8s >/tmp/template-k8s.txt
+	grep -q 'Rendered manifest:' /tmp/template-k8s.txt || fail 'make k8s should render the bundled Helm chart'
+	[ -f .tmp/k8s/rendered/kc-secure-template.yaml ] || fail 'make k8s should write a rendered Kubernetes manifest'
+	grep -q 'app.kubernetes.io/name: kc-secure-template' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should derive the chart app name from PROJECT_NAME by default'
+	find .tmp/k8s/package -maxdepth 1 -type f -name '*.tgz' | grep -q . || fail 'make k8s should package the bundled Helm chart'
+	cat >/tmp/template-k8s-values.yaml <<'EOF'
+container:
+  port: 8080
+service:
+  port: 80
+EOF
+	PROJECT_CFG_FILE=config/project.cfg K8S_VALUES_FILE=/tmp/template-k8s-values.yaml make k8s >/tmp/template-k8s-custom-port.txt
+	grep -q 'containerPort: 8080' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should keep the container port independent from the Service port'
+	grep -q 'port: 80' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should allow the Service port to differ from the container port'
+	external_render_dir=$(mktemp -d)
+	external_package_dir=$(mktemp -d)
+	cat >/tmp/template-k8s-external-values.yaml <<'EOF'
+container:
+  port: 9090
+EOF
+	PROJECT_CFG_FILE=config/project.cfg \
+		K8S_VALUES_FILE=/tmp/template-k8s-external-values.yaml \
+		K8S_RENDER_DIR="${external_render_dir}" \
+		K8S_PACKAGE_DIR="${external_package_dir}" \
+		make k8s >/tmp/template-k8s-external-paths.txt
+	[ -f "${external_render_dir}/kc-secure-template.yaml" ] || fail 'make k8s should write rendered manifests to an external K8S_RENDER_DIR'
+	grep -q 'containerPort: 9090' "${external_render_dir}/kc-secure-template.yaml" || fail 'make k8s should apply an external K8S_VALUES_FILE override'
+	find "${external_package_dir}" -maxdepth 1 -type f -name '*.tgz' | grep -q . || fail 'make k8s should package charts into an external K8S_PACKAGE_DIR'
+	rm -rf "${external_render_dir}" "${external_package_dir}"
+	sed \
+		-e "s/^PROJECT_NAME='kc-secure-template'/PROJECT_NAME='My_App'/" \
+		-e "s#^PROJECT_IMAGE=.*#PROJECT_IMAGE='ghcr.io/example/my-app:local'#" \
+		config/project.cfg >/tmp/template-k8s-sanitized.cfg
+	sh ./scripts/k8s.sh /tmp/template-k8s-sanitized.cfg >/tmp/template-k8s-sanitized.txt
+	[ -f .tmp/k8s/rendered/my-app.yaml ] || fail 'make k8s should sanitize the default release name for non-DNS-safe project names'
+	grep -q 'app.kubernetes.io/instance: my-app' .tmp/k8s/rendered/my-app.yaml || fail 'make k8s should render a DNS-safe default release label for non-DNS-safe project names'
+	grep -q 'app.kubernetes.io/name: my-app' .tmp/k8s/rendered/my-app.yaml || fail 'make k8s should sanitize the default chart app name for non-DNS-safe project names'
+	cat >/tmp/template-k8s-digest.cfg <<'EOF'
+. ./config/project.cfg
+K8S_IMAGE_REPOSITORY='ghcr.io/example/app'
+K8S_IMAGE_TAG='sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+EOF
+	sh ./scripts/k8s.sh /tmp/template-k8s-digest.cfg >/tmp/template-k8s-digest.txt
+	grep -q 'image: "ghcr.io/example/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should render digest-pinned images with @sha256 references'
 	sh ./scripts/template.sh manifest
 	tail -n +2 dist/template-manifest.txt >/tmp/template-manifest.txt
 	list_template_files >/tmp/template-expected-manifest.txt
@@ -259,6 +871,13 @@ DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cb
 DEV_SCAN_ACTIONLINT_IMAGE_LOCK='rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667'
 ENABLE_SBOM='false'
 ENABLE_GRYPE='false'
+DEV_K8S_HELM_IMAGE='alpine/helm:3.19.0'
+K8S_CHART_PATH='config/k8s/chart'
+K8S_RELEASE_NAME='smoke-go'
+K8S_NAMESPACE='smoke'
+K8S_VALUES_FILE=''
+K8S_IMAGE_REPOSITORY='example.com/template-go-smoke'
+K8S_IMAGE_TAG='smoke'
 EOF
 		cat >Dockerfile <<'EOF'
 # syntax=docker/dockerfile:1
@@ -316,9 +935,11 @@ EOF
 		chmod +x scripts/scan.sh scripts/dist.sh
 		# The copied template should still be easy to adapt to a simple Go repository.
 		make scan PROJECT_CFG_FILE=config/project.cfg >/dev/null
+		make k8s PROJECT_CFG_FILE=config/project.cfg >/dev/null
 		make dist PROJECT_CFG_FILE=config/project.cfg >/dev/null
 		[ -d dist ] || fail 'make dist should create root dist'
 		[ ! -d src/dist ] || fail 'make dist should not create src/dist'
+		[ -f .tmp/k8s/rendered/smoke-go.yaml ] || fail 'make k8s should render the optional Helm chart in a copied repo'
 		assert_no_nested_dist_dirs
 	)
 	(

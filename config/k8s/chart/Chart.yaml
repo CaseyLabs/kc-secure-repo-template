@@ -1,0 +1,16 @@
+apiVersion: v2
+# `name` is the chart package name, not the container image name.
+# The helper script rewrites this during packaging so derived repositories do
+# not need to hard-code their own project name into the template itself.
+name: app
+description: Optional Kubernetes deployment scaffold for derived repositories.
+# `application` means this chart installs a deployable app, not a library chart
+# meant to be imported by another chart.
+type: application
+# Chart version tracks the chart package itself. Bump this when the Kubernetes
+# packaging/templates change in a releasable way.
+version: 0.1.0
+# App version is an informational field that usually mirrors the app release the
+# chart deploys by default. Helm shows it in chart metadata, but Kubernetes does
+# not use it directly at runtime.
+appVersion: "0.1.0"

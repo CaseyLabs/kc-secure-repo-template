@@ -8,24 +8,40 @@
 - [Example Output](#example-output)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
-- [Setup](#setup)
-- [Usage](#usage)
-- [AI Agents Commands](#ai-agents-commands)
+  - [Setup](#setup)
+  - [Usage](#usage)
 - [Repository Layout](#repository-layout)
-- [Dependency Updates](#dependency-updates)
-- [Security Scanners](#security-scanners)
+- [Repo Options](#repo-options)
+  - [Kubernetes Support](#kubernetes-k8s-support)
+  - [AI Agents Commands](#ai-agents-commands)
+  - [Dependency Updates](#dependency-updates)
+  - [Security Scanners](#security-scanners)
 
 <!-- /TOC -->
 
+---
+
 ## Features
 
-- Nonroot containers for local development and CI workflows
-- Secret, workflow, and Dockerfile misconfiguration scanning (including Git history)
-- AI Agentic Coding template files
-- GitHub Actions CI workflow templates
-- Automated tooling/dependency version upgrade checks
-- Terraform configs for creating new repos
+This repo template includes the following default options out of the box:
+
+### Security
+
+- Scanning for vulnerabilities, misconfigurations, and leaked secrets (including Git history)
 - Reproducible builds with pinned SHA checksums to help prevent supply-chain attacks <sup>[[1]](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions)</sup>
+
+### Developer Workflow
+
+- Nonroot containers for local development and CI
+- GitHub Actions CI workflow templates
+- Automated dependency update checks
+- AI agentic coding templates
+
+### Infrastructure
+
+- Optional Terraform and Kubernetes Helm scaffolding
+
+---
 
 ## Example Output
 
@@ -45,10 +61,14 @@ Results:
   Security scan: passed
 ```
 
+---
+
 ## Requirements
 
 - Terminal shell (Linux, MacOS, or WSL)
 - Docker
+
+---
 
 ## Quick Start
 
@@ -61,7 +81,9 @@ cd kc-secure-repo-template
 make example    # Builds/tests/runs an example container
 ```
 
-## Setup
+---
+
+### Setup
 
 - Place your source code into the `src/` folder
 
@@ -71,7 +93,9 @@ make example    # Builds/tests/runs an example container
   - `Dockerfile`
   - `scripts/*.sh`
 
-## Usage
+---
+
+### Usage
 
 ```shell
 # Main Commands
@@ -89,23 +113,12 @@ make scan     # run security and secret scanning
 make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
 make renovate # Runs self-hosted Renovate for this repository
 make dist     # build release artifacts to `./dist`
-make infra    # build/test/plan the Terraform config from `./config/infra`
+make k8s      # lint/render/package Helm chart in `./config/k8s/chart`
+make k8s-test-local # server-side dry-run using a pinned kubectl image and your kubeconfig
+make infra    # build/test/plan Terraform config from `./config/infra`
 ```
 
-Version tag builds publish the generated release archive and integrity outputs
-to the GitHub Release page. The same files are also retained as the release
-workflow artifact bundle for CI evidence.
-
-## AI Agents Commands
-
-This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
-
-Example commands:
-
-```text
-/review             # Performs a code review, based on the checklist in `.agents/code_review.md`
-$security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
-```
+---
 
 ## Repository Layout
 
@@ -119,6 +132,7 @@ $security-review    # Performs a security audit of the repo, using `.agents/skil
 ├── config/
 │   ├── project.cfg           # Project configuration
 │   ├── lockfile.cfg          # Pinned SHA checksums for project tooling
+│   ├── k8s/                  # Optional Kubernetes Helm scaffold
 │   └── infra/                # Terraform example for GitHub repo hardening
 ├── .github/
 │   └── workflows/            # GitHub Actions workflows
@@ -127,7 +141,39 @@ $security-review    # Performs a security audit of the repo, using `.agents/skil
     └── skills/               # Repo-specific AI agent skills templates
 ```
 
-## Dependency Updates
+---
+
+## Repo Options
+
+### Kubernetes (`k8s`) Support
+
+Usage:
+
+```shell
+make k8s    # lint/render/package Helm chart in `./config/k8s/chart`
+```
+
+- Keep Kubernetes-owned static assets in `config/k8s/`
+
+---
+
+### AI Agents Commands
+
+This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
+
+Example commands:
+
+```text
+# Perform a code review, based on the checklist in `.agents/code_review.md`:
+/review             
+
+ # Perform a security audit of the repo, using `.agents/skills/security-review`:
+$security-review   
+```
+
+---
+
+### Dependency Updates
 
 This template also uses third-party tools to automate the upgrade of project images/tools/dependencies via Pull Requests:
 
@@ -148,7 +194,9 @@ This template also uses third-party tools to automate the upgrade of project ima
 
     - set `DEV_SCAN_ENABLE_RENOVATE=false` in `config/project.cfg`.
 
-## Security Scanners
+---
+
+### Security Scanners
 
 This project uses the following open-source tools as part of its security scanning workflows:
 
