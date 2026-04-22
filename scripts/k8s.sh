@@ -127,12 +127,6 @@ if [ -n "${values_file}" ]; then
 		exit 1
 	}
 fi
-values_args=''
-
-name_override_args=''
-if [ -n "${name_override}" ]; then
-	name_override_args="--set-string nameOverride=${name_override}"
-fi
 
 # Helm runs in Docker rather than on the host so the workflow stays
 # container-first and reproducible for new contributors.
@@ -163,7 +157,6 @@ mkdir -p "${staged_render_dir}" "${staged_package_dir}"
 if [ -n "${values_file}" ]; then
 	staged_values_file="${chart_stage_dir}/values.override.yaml"
 	cp "${values_file}" "${staged_values_file}"
-	values_args="--values ${staged_values_file}"
 fi
 
 chart_yaml_tmp="${chart_stage_dir}/Chart.yaml.tmp"
@@ -191,11 +184,16 @@ mv "${values_yaml_tmp}" "${staged_chart_path}/values.yaml"
 printf '\n==> Validate Kubernetes Helm chart\n'
 # `helm lint` is a static check: it validates chart structure and catches many
 # template/value issues before anything is sent to a cluster.
-# shellcheck disable=SC2086
+set -- lint "${staged_chart_path}"
+if [ -n "${values_file}" ]; then
+	set -- "$@" --values "${staged_values_file}"
+fi
+if [ -n "${name_override}" ]; then
+	set -- "$@" --set-string "nameOverride=${name_override}"
+fi
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
-	--entrypoint sh \
 	-e HOME="${docker_home}" \
 	-e XDG_CACHE_HOME="${docker_cache_home}" \
 	-v "${docker_home_source}:${docker_home}" \
@@ -203,16 +201,22 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm lint '${staged_chart_path}' ${values_args} ${name_override_args}"
+	"$@"
 
 printf '\n==> Render Kubernetes manifests\n'
 # `helm template` expands the chart into plain YAML. This is the safest way to
 # inspect what Kubernetes objects would be created without installing them.
-# shellcheck disable=SC2086
+set -- template "${release_name}" "${staged_chart_path}" --namespace "${namespace}"
+if [ -n "${values_file}" ]; then
+	set -- "$@" --values "${staged_values_file}"
+fi
+if [ -n "${name_override}" ]; then
+	set -- "$@" --set-string "nameOverride=${name_override}"
+fi
+set -- "$@" --set-string "image.repository=${image_repository}" --set-string "image.tag=${image_tag}"
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
-	--entrypoint sh \
 	-e HOME="${docker_home}" \
 	-e XDG_CACHE_HOME="${docker_cache_home}" \
 	-v "${docker_home_source}:${docker_home}" \
@@ -220,18 +224,17 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm template '${release_name}' '${staged_chart_path}' --namespace '${namespace}' ${values_args} ${name_override_args} --set-string image.repository='${image_repository}' --set-string image.tag='${image_tag}' > '${staged_render_file}'"
+	"$@" >"${staged_render_file}"
 
 cp "${staged_render_file}" "${render_file}"
 
 printf '\n==> Package Kubernetes Helm chart\n'
 # `helm package` produces a distributable `.tgz` chart archive, which is the
 # form you would publish to a chart repository or attach to a release.
-# shellcheck disable=SC2086
+set -- package "${staged_chart_path}" --destination "${staged_package_dir}"
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
-	--entrypoint sh \
 	-e HOME="${docker_home}" \
 	-e XDG_CACHE_HOME="${docker_cache_home}" \
 	-v "${docker_home_source}:${docker_home}" \
@@ -239,7 +242,7 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm package '${staged_chart_path}' --destination '${staged_package_dir}'"
+	"$@"
 
 set -- "${staged_package_dir}"/*.tgz
 [ -e "$1" ] || {

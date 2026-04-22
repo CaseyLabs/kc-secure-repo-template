@@ -114,6 +114,7 @@ make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
 make renovate # Runs self-hosted Renovate for this repository
 make dist     # build release artifacts to `./dist`
 make k8s      # lint/render/package Helm chart in `./config/k8s/chart`
+make k8s-test-local # server-side dry-run using a pinned kubectl image and your kubeconfig
 make infra    # build/test/plan Terraform config from `./config/infra`
 ```
 

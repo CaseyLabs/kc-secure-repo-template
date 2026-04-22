@@ -35,7 +35,7 @@ That command:
 - lints the chart
 - renders manifests locally using the image and project metadata from `config/project.cfg`
 - packages the chart with matching default `Chart.yaml` and `values.yaml` settings
-- `make k8s-test-local` also builds `config/k8s/Dockerfile.k8s` and runs `kubectl apply --dry-run=server` against a real kubeconfig/context
+- `make k8s-test-local` also runs `kubectl apply --dry-run=server` through a pinned kubectl image against a real kubeconfig/context
 
 `make k8s` does not contact a Kubernetes cluster or perform `helm install`.
 `make k8s-test-local` does contact the cluster API for validation, but uses
@@ -53,14 +53,17 @@ server-side dry-run so it does not persist resources.
   - `K8S_VALUES_FILE`
   - `K8S_IMAGE_REPOSITORY`
   - `K8S_IMAGE_TAG` set this to an explicit image version or digest-backed release tag
-  - `DEV_K8S_KUBECTL_VERSION`
-  - `DEV_K8S_KUBECTL_SHA256_LINUX_AMD64`
+  - `DEV_K8S_KUBECTL_IMAGE`
 - `config/k8s/chart/values.yaml`
 - `config/k8s/chart/templates/*.yaml`
 - local-only runtime inputs
   - `K8S_TEST_LOCAL_KUBECONFIG`
   - `K8S_TEST_LOCAL_CONTEXT`
   - `K8S_TEST_LOCAL_IMAGE`
+
+`make k8s-test-local` copies the selected kubeconfig file into a temporary
+directory and mounts only that staged file into the container, so the check
+does not expose unrelated kubeconfig files from the host.
 
 By default, `K8S_NAME_OVERRIDE` follows `PROJECT_NAME`, so the chart's
 `app.kubernetes.io/name` label derives from the repository config without

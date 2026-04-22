@@ -48,7 +48,7 @@ example: ## runs the bundled Hello World example project
 k8s: ## validates, renders, and packages the bundled Kubernetes Helm chart
 	sh scripts/k8s.sh "$(PROJECT_CFG_FILE)"
 
-k8s-test-local: ## builds config/k8s/Dockerfile.k8s and runs kubectl server-side dry-run with your local kubeconfig
+k8s-test-local: ## runs kubectl server-side dry-run with a pinned kubectl image and your local kubeconfig
 	sh scripts/k8s-test-local.sh "$(PROJECT_CFG_FILE)"
 
 infra: ## builds/tests/plans the bundled infra workspace and applies it when APPLY=true

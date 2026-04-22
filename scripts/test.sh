@@ -136,6 +136,7 @@ EOF
 		tar -C "${root_dir}" -cf - . | tar -xf -
 		sed \
 			-e "/^DEV_K8S_HELM_IMAGE=/d" \
+			-e "/^DEV_K8S_KUBECTL_IMAGE=/d" \
 			-e "/^K8S_CHART_PATH=/d" \
 			-e "/^K8S_RELEASE_NAME=/d" \
 			-e "/^K8S_NAMESPACE=/d" \
@@ -154,6 +155,7 @@ EOF
 			config/project.cfg >config/project.cfg.test
 		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test >/tmp/template-update-optional-k8s.txt
 		grep -q "^DEV_K8S_HELM_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S Helm lock when the optional setting is absent'
+		grep -q "^DEV_K8S_KUBECTL_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S kubectl lock when the optional setting is absent'
 	)
 	rm -rf "${workdir}"
 }
@@ -174,6 +176,7 @@ EOF
 		chmod +x fake-bin/docker
 		sed \
 			-e "/^DEV_K8S_HELM_IMAGE=/d" \
+			-e "/^DEV_K8S_KUBECTL_IMAGE=/d" \
 			-e "/^K8S_CHART_PATH=/d" \
 			-e "/^K8S_RELEASE_NAME=/d" \
 			-e "/^K8S_NAMESPACE=/d" \
@@ -184,6 +187,121 @@ EOF
 		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >/tmp/template-scan-optional-k8s.txt
 		grep -q 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan' /tmp/template-scan-optional-k8s.txt || fail 'scan should report when it skips the optional Kubernetes scaffold'
 		grep -q 'No rendered Kubernetes manifests available; skipping Trivy config scan' /tmp/template-scan-optional-k8s.txt || fail 'scan should skip the Kubernetes Trivy pass when nothing was rendered'
+	)
+	rm -rf "${workdir}"
+}
+
+test_k8s_shell_inputs_are_not_executed() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+set -eu
+
+printf '%s\n' "$*" >>docker.log
+for arg in "$@"; do
+	[ "$arg" != "-c" ] || exit 97
+done
+
+if [ "${1:-}" = "run" ]; then
+	shift
+fi
+
+image=''
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--rm | --cap-drop=* | --security-opt=*)
+		shift
+		continue
+		;;
+	-e | -v | -w | --user)
+		shift
+		[ "$#" -gt 0 ] && shift
+		continue
+		;;
+	*)
+		image=$1
+		shift
+		break
+		;;
+	esac
+done
+
+[ -n "${image}" ] || exit 1
+case "${image}" in
+*helm*)
+	if [ "${1:-}" = "package" ]; then
+		shift
+		shift
+		destination=''
+		while [ "$#" -gt 0 ]; do
+			if [ "$1" = "--destination" ]; then
+				shift
+				destination=${1:-}
+				break
+			fi
+			shift
+		done
+		[ -n "${destination}" ] || exit 1
+		mkdir -p "${destination}"
+		: >"${destination}/fake-chart-0.1.0.tgz"
+		exit 0
+	fi
+	image="$(pwd)/fake-bin/fake-helm"
+	;;
+esac
+PATH="$(pwd)/fake-bin:${PATH}" "${image}" "$@"
+EOF
+		cat >fake-bin/fake-helm <<'EOF'
+#!/bin/sh
+set -eu
+
+subcommand=${1:-}
+shift
+case "${subcommand}" in
+lint)
+	exit 0
+	;;
+template)
+	release=${1:-}
+	chart=${2:-}
+	shift 2
+	printf 'release: %s\n' "${release}"
+	printf 'chart: %s\n' "${chart}"
+	printf 'args:'
+	for arg in "$@"; do
+		printf ' [%s]' "${arg}"
+	done
+	printf '\n'
+	;;
+	package)
+		exit 0
+		;;
+*)
+	exit 1
+	;;
+esac
+EOF
+		chmod +x fake-bin/docker fake-bin/fake-helm
+		cat >/tmp/template-k8s-shell-values.yaml <<'EOF'
+container:
+  port: 8080
+EOF
+		cat >config/project.cfg.test <<'EOF'
+. ./config/project.cfg
+DEV_K8S_HELM_IMAGE='fake-helm'
+K8S_NAME_OVERRIDE='safe; touch /tmp/template-k8s-shell-proof #'
+K8S_VALUES_FILE='/tmp/template-k8s-shell-values.yaml'
+EOF
+		rm -f /tmp/template-k8s-shell-proof
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/k8s.sh config/project.cfg.test >/tmp/template-k8s-shell-safe.txt
+		[ ! -f /tmp/template-k8s-shell-proof ] || fail 'k8s should not execute shell metacharacters from project config values'
+		grep -F -- 'nameOverride=safe; touch /tmp/template-k8s-shell-proof #' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'k8s should pass unsafe-looking overrides as literal Helm arguments'
 	)
 	rm -rf "${workdir}"
 }
@@ -202,18 +320,45 @@ set -eu
 
 printf '%s\n' "$*" >>docker.log
 
-cmd=''
-while [ "$#" -gt 0 ]; do
-	if [ "$1" = "-c" ]; then
-		shift
-		cmd=${1:-}
-		break
-	fi
+case "${1:-}" in
+run)
 	shift
+	;;
+*)
+	exit 0
+	;;
+esac
+
+image=''
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--rm | --cap-drop=* | --security-opt=*)
+		shift
+		continue
+		;;
+	-e | -v | -w | --user)
+		shift
+		[ "$#" -gt 0 ] && shift
+		continue
+		;;
+	*)
+		image=$1
+		shift
+		break
+		;;
+	esac
 done
 
-[ -z "${cmd}" ] && exit 0
-PATH="$(pwd)/fake-bin:${PATH}" sh -eu -c "${cmd}"
+[ -n "${image}" ] || exit 0
+case "${image}" in
+*helm*)
+	image="$(pwd)/fake-bin/helm"
+	;;
+*)
+	exit 0
+	;;
+esac
+PATH="$(pwd)/fake-bin:${PATH}" "${image}" "$@"
 EOF
 		cat >fake-bin/helm <<'EOF'
 #!/bin/sh
@@ -281,18 +426,37 @@ test_k8s_chart_packaging_uses_project_defaults() {
 #!/bin/sh
 set -eu
 
-cmd=''
-while [ "$#" -gt 0 ]; do
-	if [ "$1" = "-c" ]; then
-		shift
-		cmd=${1:-}
-		break
-	fi
+if [ "${1:-}" = "run" ]; then
 	shift
+fi
+
+image=''
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--rm | --cap-drop=* | --security-opt=*)
+		shift
+		continue
+		;;
+	-e | -v | -w | --user)
+		shift
+		[ "$#" -gt 0 ] && shift
+		continue
+		;;
+	*)
+		image=$1
+		shift
+		break
+		;;
+	esac
 done
 
-[ -n "${cmd}" ] || exit 1
-PATH="$(pwd)/fake-bin:${PATH}" sh -eu -c "${cmd}"
+[ -n "${image}" ] || exit 1
+case "${image}" in
+*helm*)
+	image="$(pwd)/fake-bin/helm"
+	;;
+esac
+PATH="$(pwd)/fake-bin:${PATH}" "${image}" "$@"
 EOF
 		cat >fake-bin/helm <<'EOF'
 #!/bin/sh
@@ -385,11 +549,8 @@ test_k8s_test_local_uses_kubeconfig_and_server_dry_run() {
 printf '%s\n' "$*" >>docker.log
 
 case "$1" in
-build)
-	exit 0
-	;;
 run)
-	printf '%s\n' 'service/test-svc' > /tmp/k8s-test-local-dry-run.txt
+	printf '%s\n' 'service/test-svc'
 	exit 0
 	;;
 esac
@@ -415,6 +576,9 @@ spec:
 YAML
 EOF
 		chmod +x scripts/k8s.sh
+		cat >config/project.cfg <<'EOF'
+DEV_K8S_KUBECTL_IMAGE='bitnami/kubectl:latest'
+EOF
 		cat >fake-kubeconfig/config <<'EOF'
 apiVersion: v1
 kind: Config
@@ -427,10 +591,12 @@ EOF
 			K8S_TEST_LOCAL_KUBECONFIG="${workdir}/fake-kubeconfig/config" \
 			K8S_TEST_LOCAL_CONTEXT='kind-local' \
 			sh ./scripts/k8s-test-local.sh config/project.cfg >/tmp/template-k8s-test-local.txt
-		grep -F -- '-f config/k8s/Dockerfile.k8s' docker.log || fail 'k8s-test-local should build config/k8s/Dockerfile.k8s'
+		! grep -F -- ' build ' docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not build a repo-controlled kubectl image'
+		grep -F -- 'bitnami/kubectl:latest' docker.log || fail 'k8s-test-local should run the configured kubectl image'
 		grep -F -- '--dry-run=server' docker.log || fail 'k8s-test-local should use kubectl server-side dry-run'
 		grep -F -- "--context kind-local" docker.log || fail 'k8s-test-local should pass the configured Kubernetes context'
-		grep -F -- "${workdir}/fake-kubeconfig:/tmp/k8s-test-kubeconfig:ro" docker.log || fail 'k8s-test-local should mount the kubeconfig directory read-only'
+		! grep -F -- "${workdir}/fake-kubeconfig:/tmp/k8s-test-kubeconfig:ro" docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not mount the original kubeconfig directory'
+		grep -F -- '/tmp/tmp.' docker.log || fail 'k8s-test-local should mount a staged kubeconfig directory'
 		grep -q 'Resources checked by server-side dry-run: 1' /tmp/template-k8s-test-local.txt || fail 'k8s-test-local should report the dry-run resource count'
 	)
 	rm -rf "${workdir}"
@@ -524,6 +690,7 @@ template)
 	assert_no_nested_dist_dirs
 	test_optional_k8s_update_compat
 	test_optional_k8s_scan_skip
+	test_k8s_shell_inputs_are_not_executed
 	test_k8s_render_file_scan_path
 	test_k8s_chart_packaging_uses_project_defaults
 	test_k8s_test_local_uses_kubeconfig_and_server_dry_run
