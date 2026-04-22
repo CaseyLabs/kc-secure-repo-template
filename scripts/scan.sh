@@ -31,6 +31,18 @@ docker_cache_home=${DOCKER_CACHE_HOME:-${docker_home}/.cache}
 docker_home_source=${DOCKER_HOME_SOURCE:-$(pwd)/.cache/docker-home}
 docker_tmpdir=${DOCKER_TMPDIR:-$(pwd)/.cache/docker-tmp}
 mkdir -p "${docker_home_source}" "${docker_tmpdir}"
+k8s_stage_dir=''
+k8s_metadata_file=''
+
+cleanup() {
+	if [ -n "${k8s_stage_dir}" ]; then
+		rm -rf "${k8s_stage_dir}"
+	fi
+	if [ -n "${k8s_metadata_file}" ]; then
+		rm -f "${k8s_metadata_file}"
+	fi
+}
+trap cleanup EXIT INT TERM HUP
 
 # Read every external GitHub Action reference from workflow files.
 list_workflow_entries() {
@@ -127,19 +139,27 @@ case "${k8s_chart_path}" in
 /* | ./* | ../*) ;;
 *) k8s_chart_path="./${k8s_chart_path}" ;;
 esac
-k8s_render_dir=${K8S_RENDER_DIR:-.tmp/k8s/rendered}
-k8s_release_name=${K8S_RELEASE_NAME:-kc-secure-template}
-k8s_render_file="${k8s_render_dir}/${k8s_release_name}.yaml"
-case "${k8s_render_file}" in
-/*) k8s_render_file_scan_path=${k8s_render_file} ;;
-./*) k8s_render_file_scan_path="/workspace/${k8s_render_file#./}" ;;
-*) k8s_render_file_scan_path="/workspace/${k8s_render_file}" ;;
-esac
+k8s_render_file_scan_path=''
 k8s_helm_image=${DEV_K8S_HELM_IMAGE_LOCK:-${DEV_K8S_HELM_IMAGE:-}}
 
 if [ -n "${k8s_helm_image}" ] && [ -d "${k8s_chart_path}" ]; then
+	k8s_metadata_file=$(mktemp "${docker_tmpdir}/k8s-scan-meta.XXXXXX")
 	printf '\n==> Render Kubernetes manifests\n'
-	sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >/tmp/k8s-scan.txt
+	K8S_METADATA_FILE="${k8s_metadata_file}" sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >/tmp/k8s-scan.txt
+	# shellcheck disable=SC1090
+	. "${k8s_metadata_file}"
+	[ -n "${K8S_RENDER_FILE:-}" ] || {
+		printf '%s\n' 'k8s render did not report a manifest path' >&2
+		exit 1
+	}
+	[ -f "${K8S_RENDER_FILE}" ] || {
+		printf 'missing rendered manifest: %s\n' "${K8S_RENDER_FILE}" >&2
+		exit 1
+	}
+	k8s_stage_dir=$(mktemp -d "${docker_tmpdir}/k8s-scan-manifest.XXXXXX")
+	k8s_stage_file="${k8s_stage_dir}/$(basename "${K8S_RENDER_FILE}")"
+	cp "${K8S_RENDER_FILE}" "${k8s_stage_file}"
+	k8s_render_file_scan_path="/tmp/$(basename "${k8s_stage_dir}")/$(basename "${K8S_RENDER_FILE}")"
 else
 	printf '\n==> Skip Kubernetes manifest scan\n'
 	printf '%s\n' 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan'

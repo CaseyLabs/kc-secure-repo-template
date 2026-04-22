@@ -408,8 +408,24 @@ K8S_RELEASE_NAME='custom-release'
 EOF
 		PATH="${workdir}/fake-bin:${PATH}" \
 			sh ./scripts/scan.sh config/project.cfg.test >/tmp/template-scan-render-dir.txt
-		grep -F -- '/workspace/out/k8s/rendered/custom-release.yaml' docker.log || fail 'scan should pass the current rendered Kubernetes manifest to Trivy'
-		! grep -F -- '/workspace/out/k8s/rendered ' docker.log >/dev/null 2>&1 || fail 'scan should not pass the entire Kubernetes render directory to Trivy'
+		grep -F -- '/tmp/k8s-scan-manifest.' docker.log || fail 'scan should stage the rendered Kubernetes manifest into the mounted temp directory'
+		grep -F -- '/tmp/k8s-scan-manifest.' docker.log | grep -F -- 'custom-release.yaml' >/dev/null || fail 'scan should pass the rendered Kubernetes manifest basename to Trivy'
+		! grep -F -- '/workspace/out/k8s/rendered' docker.log >/dev/null 2>&1 || fail 'scan should not assume the render directory is mounted inside the scanner container'
+		: >docker.log
+		absolute_render_dir=$(mktemp -d "${workdir}/external-render.XXXXXX")
+		cat >config/project.cfg.absolute <<EOF
+. ./config/project.cfg
+PROJECT_NAME='Derived_App'
+PROJECT_IMAGE='registry.example.com/derived-app:local'
+DEV_K8S_HELM_IMAGE='fake/helm:latest'
+K8S_RELEASE_NAME=''
+K8S_RENDER_DIR='${absolute_render_dir}'
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" \
+			sh ./scripts/scan.sh config/project.cfg.absolute >/tmp/template-scan-absolute-render-dir.txt
+		[ -f "${absolute_render_dir}/derived-app.yaml" ] || fail 'scan should rely on the manifest path rendered by k8s.sh when K8S_RELEASE_NAME is omitted'
+		grep -F -- '/tmp/k8s-scan-manifest.' docker.log | grep -F -- 'derived-app.yaml' >/dev/null || fail 'scan should stage the derived release-name manifest for Trivy'
+		! grep -F -- "${absolute_render_dir}" docker.log >/dev/null 2>&1 || fail 'scan should not pass an absolute host render directory directly into the scanner container'
 	)
 	rm -rf "${workdir}"
 }
@@ -558,11 +574,28 @@ esac
 exit 0
 EOF
 		chmod +x fake-bin/docker
-		cat >scripts/k8s.sh <<'EOF'
+		cat >scripts/k8s.sh <<'SCRIPT'
 #!/bin/sh
 set -eu
-mkdir -p .tmp/k8s/rendered
-cat >.tmp/k8s/rendered/kc-secure-template.yaml <<'YAML'
+PROJECT_CFG_FILE=${1:-config/project.cfg}
+. "${PROJECT_CFG_FILE}"
+
+sanitize_k8s_name() {
+	printf '%s' "$1" |
+		tr '[:upper:]' '[:lower:]' |
+		tr -cs 'a-z0-9' '-' |
+		sed -e 's/^-*//' -e 's/-*$//'
+}
+
+default_k8s_name=$(sanitize_k8s_name "${PROJECT_NAME:-}")
+[ -n "${default_k8s_name}" ] || default_k8s_name=app
+release_name=${K8S_RELEASE_NAME:-${default_k8s_name}}
+[ -n "${release_name}" ] || release_name=kc-secure-template
+render_dir=${K8S_RENDER_DIR:-.tmp/k8s/rendered}
+render_file="${render_dir}/${release_name}.yaml"
+
+mkdir -p "${render_dir}"
+cat >"${render_file}" <<'YAML'
 apiVersion: v1
 kind: Service
 metadata:
@@ -574,9 +607,15 @@ spec:
   selector:
     app: test
 YAML
-EOF
+if [ -n "${K8S_METADATA_FILE:-}" ]; then
+	cat >"${K8S_METADATA_FILE}" <<METADATA
+K8S_RENDER_FILE='${render_file}'
+METADATA
+fi
+SCRIPT
 		chmod +x scripts/k8s.sh
 		cat >config/project.cfg <<'EOF'
+PROJECT_NAME='kc-secure-template'
 DEV_K8S_KUBECTL_IMAGE='bitnami/kubectl:latest'
 EOF
 		cat >fake-kubeconfig/config <<'EOF'
@@ -597,7 +636,23 @@ EOF
 		grep -F -- "--context kind-local" docker.log || fail 'k8s-test-local should pass the configured Kubernetes context'
 		! grep -F -- "${workdir}/fake-kubeconfig:/tmp/k8s-test-kubeconfig:ro" docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not mount the original kubeconfig directory'
 		grep -F -- '/tmp/tmp.' docker.log || fail 'k8s-test-local should mount a staged kubeconfig directory'
+		grep -F -- '/tmp/k8s-test-local-manifest.' docker.log | grep -F -- 'kc-secure-template.yaml' >/dev/null || fail 'k8s-test-local should stage the rendered manifest into the mounted temp directory'
 		grep -q 'Resources checked by server-side dry-run: 1' /tmp/template-k8s-test-local.txt || fail 'k8s-test-local should report the dry-run resource count'
+		: >docker.log
+		external_render_dir=$(mktemp -d "${workdir}/external-render.XXXXXX")
+		cat >config/project.cfg.absolute <<EOF
+. ./config/project.cfg
+PROJECT_NAME='Derived_App'
+DEV_K8S_KUBECTL_IMAGE='bitnami/kubectl:latest'
+K8S_RELEASE_NAME=''
+K8S_RENDER_DIR='${external_render_dir}'
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" \
+			K8S_TEST_LOCAL_KUBECONFIG="${workdir}/fake-kubeconfig/config" \
+			sh ./scripts/k8s-test-local.sh config/project.cfg.absolute >/tmp/template-k8s-test-local-absolute.txt
+		[ -f "${external_render_dir}/derived-app.yaml" ] || fail 'k8s-test-local should use the manifest path rendered by k8s.sh when K8S_RELEASE_NAME is omitted'
+		grep -F -- '/tmp/k8s-test-local-manifest.' docker.log | grep -F -- 'derived-app.yaml' >/dev/null || fail 'k8s-test-local should stage the derived release-name manifest for kubectl'
+		! grep -F -- "${external_render_dir}" docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not pass an absolute host render directory directly into the kubectl container'
 	)
 	rm -rf "${workdir}"
 }

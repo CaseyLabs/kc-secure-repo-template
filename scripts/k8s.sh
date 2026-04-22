@@ -31,6 +31,8 @@ env_k8s_package_dir=${K8S_PACKAGE_DIR-}
 env_k8s_package_dir_set=${K8S_PACKAGE_DIR+x}
 env_k8s_render_dir=${K8S_RENDER_DIR-}
 env_k8s_render_dir_set=${K8S_RENDER_DIR+x}
+env_k8s_metadata_file=${K8S_METADATA_FILE-}
+env_k8s_metadata_file_set=${K8S_METADATA_FILE+x}
 
 . "${project_cfg_file}"
 
@@ -43,12 +45,17 @@ env_k8s_render_dir_set=${K8S_RENDER_DIR+x}
 [ "${env_k8s_image_tag_set}" = x ] && K8S_IMAGE_TAG=${env_k8s_image_tag}
 [ "${env_k8s_package_dir_set}" = x ] && K8S_PACKAGE_DIR=${env_k8s_package_dir}
 [ "${env_k8s_render_dir_set}" = x ] && K8S_RENDER_DIR=${env_k8s_render_dir}
+[ "${env_k8s_metadata_file_set}" = x ] && K8S_METADATA_FILE=${env_k8s_metadata_file}
 
 sanitize_k8s_name() {
 	printf '%s' "$1" |
 		tr '[:upper:]' '[:lower:]' |
 		tr -cs 'a-z0-9' '-' |
 		sed -e 's/^-*//' -e 's/-*$//'
+}
+
+shell_quote() {
+	printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
 
 default_k8s_name=$(sanitize_k8s_name "${PROJECT_NAME:-}")
@@ -250,6 +257,15 @@ set -- "${staged_package_dir}"/*.tgz
 	exit 1
 }
 cp "$@" "${package_dir}/"
+
+if [ -n "${K8S_METADATA_FILE:-}" ]; then
+	cat >"${K8S_METADATA_FILE}.tmp" <<EOF
+K8S_RELEASE_NAME=$(shell_quote "${release_name}")
+K8S_RENDER_FILE=$(shell_quote "${render_file}")
+K8S_PACKAGE_DIR=$(shell_quote "${package_dir}")
+EOF
+	mv "${K8S_METADATA_FILE}.tmp" "${K8S_METADATA_FILE}"
+fi
 
 printf '\n==> Kubernetes summary\n'
 printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"
