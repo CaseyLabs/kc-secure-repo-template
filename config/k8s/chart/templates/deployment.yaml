@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "kc-secure-template-app.fullname" . }}
+  name: {{ include "app.fullname" . }}
   labels:
-    {{- include "kc-secure-template-app.labels" . | nindent 4 }}
+    {{- include "app.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "kc-secure-template-app.name" . }}
+      app.kubernetes.io/name: {{ include "app.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        {{- include "kc-secure-template-app.labels" . | nindent 8 }}
+        {{- include "app.labels" . | nindent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}

@@ -210,6 +210,109 @@ EOF
 	rm -rf "${workdir}"
 }
 
+test_k8s_chart_packaging_uses_project_defaults() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+set -eu
+
+cmd=''
+while [ "$#" -gt 0 ]; do
+	if [ "$1" = "-c" ]; then
+		shift
+		cmd=${1:-}
+		break
+	fi
+	shift
+done
+
+[ -n "${cmd}" ] || exit 1
+PATH="$(pwd)/fake-bin:${PATH}" sh -eu -c "${cmd}"
+EOF
+		cat >fake-bin/helm <<'EOF'
+#!/bin/sh
+set -eu
+
+yaml_value() {
+	file=$1
+	key=$2
+	awk -F': ' -v key="${key}" '$1 == key { print $2; exit }' "${file}"
+}
+
+image_value() {
+	file=$1
+	key=$2
+	awk -v key="${key}" '
+		/^image:/ { in_image = 1; next }
+		in_image && /^[^[:space:]]/ { in_image = 0 }
+		in_image && $1 == key ":" { print $2; exit }
+	' "${file}"
+}
+
+case "$1" in
+lint)
+	chart=$2
+	[ -f "${chart}/Chart.yaml" ] || exit 1
+	;;
+template)
+	release=$2
+	chart=$3
+	printf 'release: %s\n' "${release}"
+	printf 'chartName: %s\n' "$(yaml_value "${chart}/Chart.yaml" "name")"
+	printf 'imageRepository: %s\n' "$(image_value "${chart}/values.yaml" "repository")"
+	printf 'imageTag: %s\n' "$(image_value "${chart}/values.yaml" "tag")"
+	;;
+package)
+	chart=$2
+	shift 2
+	destination=''
+	while [ "$#" -gt 0 ]; do
+		if [ "$1" = "--destination" ]; then
+			shift
+			destination=$1
+			break
+		fi
+		shift
+	done
+	[ -n "${destination}" ] || exit 1
+	mkdir -p "${destination}"
+	chart_name=$(yaml_value "${chart}/Chart.yaml" "name")
+	chart_version=$(yaml_value "${chart}/Chart.yaml" "version")
+	tar -C "$(dirname "${chart}")" -czf "${destination}/${chart_name}-${chart_version}.tgz" "$(basename "${chart}")"
+	;;
+*)
+	exit 1
+	;;
+esac
+EOF
+		chmod +x fake-bin/docker fake-bin/helm
+		cat >config/project.cfg.test <<'EOF'
+PROJECT_NAME='derived-app'
+PROJECT_IMAGE='registry.example.com:5000/derived-app:local'
+DEV_K8S_HELM_IMAGE='fake/helm:latest'
+K8S_CHART_PATH='config/k8s/chart'
+K8S_RELEASE_NAME="${PROJECT_NAME}"
+K8S_NAME_OVERRIDE="${PROJECT_NAME}"
+K8S_NAMESPACE='default'
+K8S_VALUES_FILE=''
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/k8s.sh config/project.cfg.test >/tmp/template-k8s-staged.txt
+		grep -q '^chartName: derived-app$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should use the project-specific chart metadata'
+		grep -q '^imageRepository: registry.example.com:5000/derived-app$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should derive the repository from PROJECT_IMAGE without the tag'
+		grep -q '^imageTag: local$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should derive the tag from PROJECT_IMAGE when K8S_IMAGE_TAG is unset'
+		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/Chart.yaml | grep -q '^name: derived-app$' || fail 'packaged chart should use the project-specific chart name'
+		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/values.yaml | grep -q '^  repository: registry.example.com:5000/derived-app$' || fail 'packaged chart values should use the configured image repository'
+		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/values.yaml | grep -q '^  tag: local$' || fail 'packaged chart values should use the configured image tag'
+	)
+	rm -rf "${workdir}"
+}
+
 case "${mode}" in
 src)
 	# Validate the default bundled Go example the same way a derived repo would.
@@ -298,6 +401,7 @@ template)
 	test_optional_k8s_update_compat
 	test_optional_k8s_scan_skip
 	test_k8s_render_dir_scan_path
+	test_k8s_chart_packaging_uses_project_defaults
 	rm -rf dist
 	# `make example` should exercise the demo without leaving release artifacts behind.
 	PROJECT_CFG_FILE=config/project.cfg make example >/tmp/template-example.txt

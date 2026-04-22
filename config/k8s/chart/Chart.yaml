@@ -1,5 +1,5 @@
 apiVersion: v2
-name: kc-secure-template-app
+name: app
 description: Optional Kubernetes deployment scaffold for derived repositories.
 type: application
 version: 0.1.0

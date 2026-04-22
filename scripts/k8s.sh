@@ -21,8 +21,9 @@ release_name=${K8S_RELEASE_NAME:-kc-secure-template}
 namespace=${K8S_NAMESPACE:-default}
 values_file=${K8S_VALUES_FILE:-}
 name_override=${K8S_NAME_OVERRIDE:-${PROJECT_NAME:-}}
-image_repository=${K8S_IMAGE_REPOSITORY:-${PROJECT_IMAGE:-kc-secure-template:local}}
-image_tag=${K8S_IMAGE_TAG:-latest}
+chart_name=${PROJECT_NAME:-app}
+image_repository=${K8S_IMAGE_REPOSITORY:-}
+image_tag=${K8S_IMAGE_TAG:-}
 package_dir=${K8S_PACKAGE_DIR:-.tmp/k8s/package}
 render_dir=${K8S_RENDER_DIR:-.tmp/k8s/rendered}
 render_file="${render_dir}/${release_name}.yaml"
@@ -35,6 +36,36 @@ esac
 	printf 'missing chart directory: %s\n' "${chart_path}" >&2
 	exit 1
 }
+
+if [ -z "${image_repository}" ] || [ -z "${image_tag}" ]; then
+	project_image=${PROJECT_IMAGE:-}
+	project_image_repository=''
+	project_image_tag=''
+
+	if [ -n "${project_image}" ]; then
+		case "${project_image}" in
+		*@*)
+			project_image_repository=${project_image%%@*}
+			project_image_tag=${project_image#*@}
+			;;
+		*)
+			project_image_basename=${project_image##*/}
+			case "${project_image_basename}" in
+			*:*)
+				project_image_repository=${project_image%:*}
+				project_image_tag=${project_image##*:}
+				;;
+			*)
+				project_image_repository=${project_image}
+				;;
+			esac
+			;;
+		esac
+	fi
+
+	[ -n "${image_repository}" ] || image_repository=${project_image_repository:-${chart_name}}
+	[ -n "${image_tag}" ] || image_tag=${project_image_tag:-latest}
+fi
 
 values_args=''
 if [ -n "${values_file}" ]; then
@@ -62,6 +93,34 @@ docker_home_source=${DOCKER_HOME_SOURCE:-$(pwd)/.cache/docker-home}
 docker_tmpdir=${DOCKER_TMPDIR:-$(pwd)/.cache/docker-tmp}
 mkdir -p "${docker_home_source}" "${docker_tmpdir}" "${package_dir}" "${render_dir}"
 
+chart_stage_parent=.tmp/k8s
+mkdir -p "${chart_stage_parent}"
+chart_stage_dir=$(mktemp -d "${chart_stage_parent}/staged.XXXXXX")
+cleanup() {
+	rm -rf "${chart_stage_dir}"
+}
+trap cleanup EXIT INT TERM HUP
+
+staged_chart_path="${chart_stage_dir}/chart"
+cp -R "${chart_path}" "${staged_chart_path}"
+
+chart_yaml_tmp="${chart_stage_dir}/Chart.yaml.tmp"
+awk -v chart_name="${chart_name}" '
+	/^name:/ { print "name: " chart_name; next }
+	{ print }
+' "${staged_chart_path}/Chart.yaml" >"${chart_yaml_tmp}"
+mv "${chart_yaml_tmp}" "${staged_chart_path}/Chart.yaml"
+
+values_yaml_tmp="${chart_stage_dir}/values.yaml.tmp"
+awk -v image_repository="${image_repository}" -v image_tag="${image_tag}" '
+	/^image:/ { in_image = 1; print; next }
+	in_image && /^[^[:space:]]/ { in_image = 0 }
+	in_image && /^[[:space:]]+repository:/ { print "  repository: " image_repository; next }
+	in_image && /^[[:space:]]+tag:/ { print "  tag: " image_tag; next }
+	{ print }
+' "${staged_chart_path}/values.yaml" >"${values_yaml_tmp}"
+mv "${values_yaml_tmp}" "${staged_chart_path}/values.yaml"
+
 printf '\n==> Validate Kubernetes Helm chart\n'
 # shellcheck disable=SC2086
 docker run --rm --user "${docker_uid}:${docker_gid}" \
@@ -75,7 +134,7 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm lint '${chart_path}' ${values_args} ${name_override_args}"
+	-eu -c "helm lint '${staged_chart_path}' ${values_args} ${name_override_args}"
 
 printf '\n==> Render Kubernetes manifests\n'
 # shellcheck disable=SC2086
@@ -90,7 +149,7 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm template '${release_name}' '${chart_path}' --namespace '${namespace}' ${values_args} ${name_override_args} --set-string image.repository='${image_repository}' --set-string image.tag='${image_tag}' > '${render_file}'"
+	-eu -c "helm template '${release_name}' '${staged_chart_path}' --namespace '${namespace}' ${values_args} ${name_override_args} --set-string image.repository='${image_repository}' --set-string image.tag='${image_tag}' > '${render_file}'"
 
 printf '\n==> Package Kubernetes Helm chart\n'
 # shellcheck disable=SC2086
@@ -105,7 +164,7 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm package '${chart_path}' --destination '${package_dir}'"
+	-eu -c "helm package '${staged_chart_path}' --destination '${package_dir}'"
 
 printf '\n==> Kubernetes summary\n'
 printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"

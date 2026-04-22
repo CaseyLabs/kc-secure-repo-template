@@ -25,8 +25,8 @@ PROJECT_CFG_FILE=config/project.cfg make k8s
 That command:
 
 - lints the chart
-- renders manifests locally
-- packages the chart
+- renders manifests locally using the image and project metadata from `config/project.cfg`
+- packages the chart with matching default `Chart.yaml` and `values.yaml` settings
 
 It does not contact a Kubernetes cluster or perform `helm install`.
 
