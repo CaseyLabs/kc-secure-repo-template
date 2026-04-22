@@ -110,8 +110,8 @@ make scan     # run security and secret scanning
 make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
 make renovate # Runs self-hosted Renovate for this repository
 make dist     # build release artifacts to `./dist`
-make k8s      # lint, render, and package the optional Helm chart in `./config/k8s/chart`
-make infra    # build/test/plan the Terraform config from `./config/infra`
+make k8s      # lint/render/package Helm chart in `./config/k8s/chart`
+make infra    # build/test/plan Terraform config from `./config/infra`
 ```
 
 ---
@@ -157,7 +157,6 @@ That flow runs locally in a container and:
 - lints the chart
 - renders manifests
 - packages the chart
-
 - It does not contact a cluster or perform `helm install`
 - Keep Kubernetes-owned static assets in `config/k8s/`
 
