@@ -81,6 +81,8 @@ cd kc-secure-repo-template
 make example    # Builds/tests/runs an example container
 ```
 
+---
+
 ### Setup
 
 - Place your source code into the `src/` folder
@@ -88,9 +90,10 @@ make example    # Builds/tests/runs an example container
 - Then customize the following files to fit your project/code base:
 
   - `config/project.cfg`
-  - `config/k8s/` if your project also needs the optional Kubernetes scaffold
   - `Dockerfile`
   - `scripts/*.sh`
+
+---
 
 ### Usage
 
@@ -111,7 +114,6 @@ make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
 make renovate # Runs self-hosted Renovate for this repository
 make dist     # build release artifacts to `./dist`
 make k8s      # lint/render/package Helm chart in `./config/k8s/chart`
-make k8s-test-local # build config/k8s/Dockerfile.k8s and run kubectl server-side dry-run with your kubeconfig
 make infra    # build/test/plan Terraform config from `./config/infra`
 ```
 
@@ -144,36 +146,13 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 
 ### Kubernetes (`k8s`) Support
 
-This template includes an optional Helm chart under `config/k8s/chart` for
-derived repositories that deploy to Kubernetes.
-
-Use:
+Usage:
 
 ```shell
-make k8s
-make k8s-test-local
+make k8s    # lint/render/package Helm chart in `./config/k8s/chart`
 ```
 
-That flow runs locally in a container and:
-
-- lints the chart
-- renders manifests
-- packages the chart
-- `make k8s-test-local` also builds `config/k8s/Dockerfile.k8s` and runs `kubectl apply --dry-run=server` against your current cluster context
-- It does not contact a cluster or perform `helm install`
 - Keep Kubernetes-owned static assets in `config/k8s/`
-
-`make k8s` reads its main defaults from `config/project.cfg`, but explicit
-`K8S_*` environment overrides still win. `K8S_VALUES_FILE`, `K8S_RENDER_DIR`,
-and `K8S_PACKAGE_DIR` may point either inside the repository or at absolute
-host paths outside it.
-
-By default, the generated Helm release name and chart name are sanitized from
-`PROJECT_NAME` into a DNS-safe Kubernetes name.
-
-`make k8s-test-local` requires a real kubeconfig. By default it uses `~/.kube/config`.
-You can point it at another file with `K8S_TEST_LOCAL_KUBECONFIG=/path/to/config`
-and select a context with `K8S_TEST_LOCAL_CONTEXT=name`.
 
 ---
 
@@ -184,8 +163,11 @@ This project includes Agentic commands and skills that can be used by AI CLI too
 Example commands:
 
 ```text
-/review             # Performs a code review, based on the checklist in `.agents/code_review.md`
-$security-review    # Performs a security audit of the repo, using `.agents/skills/security-review`
+# Perform a code review, based on the checklist in `.agents/code_review.md`:
+/review             
+
+ # Perform a security audit of the repo, using `.agents/skills/security-review`:
+$security-review   
 ```
 
 ---
