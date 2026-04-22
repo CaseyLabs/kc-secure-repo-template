@@ -188,6 +188,28 @@ EOF
 	rm -rf "${workdir}"
 }
 
+test_k8s_render_dir_scan_path() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		PATH="${workdir}/fake-bin:${PATH}" \
+			K8S_RENDER_DIR='out/k8s/rendered' \
+			sh ./scripts/scan.sh config/project.cfg >/tmp/template-scan-render-dir.txt
+		grep -F -- '/workspace/out/k8s/rendered' docker.log || fail 'scan should pass the configured Kubernetes render directory to Trivy'
+	)
+	rm -rf "${workdir}"
+}
+
 case "${mode}" in
 src)
 	# Validate the default bundled Go example the same way a derived repo would.
@@ -275,6 +297,7 @@ template)
 	assert_no_nested_dist_dirs
 	test_optional_k8s_update_compat
 	test_optional_k8s_scan_skip
+	test_k8s_render_dir_scan_path
 	rm -rf dist
 	# `make example` should exercise the demo without leaving release artifacts behind.
 	PROJECT_CFG_FILE=config/project.cfg make example >/tmp/template-example.txt
@@ -289,7 +312,17 @@ template)
 	PROJECT_CFG_FILE=config/project.cfg make k8s >/tmp/template-k8s.txt
 	grep -q 'Rendered manifest:' /tmp/template-k8s.txt || fail 'make k8s should render the bundled Helm chart'
 	[ -f .tmp/k8s/rendered/kc-secure-template.yaml ] || fail 'make k8s should write a rendered Kubernetes manifest'
+	grep -q 'app.kubernetes.io/name: kc-secure-template' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should derive the chart app name from PROJECT_NAME by default'
 	find .tmp/k8s/package -maxdepth 1 -type f -name '*.tgz' | grep -q . || fail 'make k8s should package the bundled Helm chart'
+	cat >/tmp/template-k8s-values.yaml <<'EOF'
+container:
+  port: 8080
+service:
+  port: 80
+EOF
+	PROJECT_CFG_FILE=config/project.cfg K8S_VALUES_FILE=/tmp/template-k8s-values.yaml make k8s >/tmp/template-k8s-custom-port.txt
+	grep -q 'containerPort: 8080' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should keep the container port independent from the Service port'
+	grep -q 'port: 80' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should allow the Service port to differ from the container port'
 	sh ./scripts/template.sh manifest
 	tail -n +2 dist/template-manifest.txt >/tmp/template-manifest.txt
 	list_template_files >/tmp/template-expected-manifest.txt

@@ -20,6 +20,7 @@ chart_path=${K8S_CHART_PATH:-config/k8s/chart}
 release_name=${K8S_RELEASE_NAME:-kc-secure-template}
 namespace=${K8S_NAMESPACE:-default}
 values_file=${K8S_VALUES_FILE:-}
+name_override=${K8S_NAME_OVERRIDE:-${PROJECT_NAME:-}}
 image_repository=${K8S_IMAGE_REPOSITORY:-${PROJECT_IMAGE:-kc-secure-template:local}}
 image_tag=${K8S_IMAGE_TAG:-latest}
 package_dir=${K8S_PACKAGE_DIR:-.tmp/k8s/package}
@@ -48,6 +49,11 @@ if [ -n "${values_file}" ]; then
 	values_args="--values ${values_file}"
 fi
 
+name_override_args=''
+if [ -n "${name_override}" ]; then
+	name_override_args="--set-string nameOverride=${name_override}"
+fi
+
 docker_uid=${DOCKER_UID:-$(id -u)}
 docker_gid=${DOCKER_GID:-$(id -g)}
 docker_home=${DOCKER_HOME:-/tmp/kc-template-home}
@@ -69,7 +75,7 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm lint '${chart_path}' ${values_args}"
+	-eu -c "helm lint '${chart_path}' ${values_args} ${name_override_args}"
 
 printf '\n==> Render Kubernetes manifests\n'
 # shellcheck disable=SC2086
@@ -84,7 +90,7 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${helm_image}" \
-	-eu -c "helm template '${release_name}' '${chart_path}' --namespace '${namespace}' ${values_args} --set-string image.repository='${image_repository}' --set-string image.tag='${image_tag}' > '${render_file}'"
+	-eu -c "helm template '${release_name}' '${chart_path}' --namespace '${namespace}' ${values_args} ${name_override_args} --set-string image.repository='${image_repository}' --set-string image.tag='${image_tag}' > '${render_file}'"
 
 printf '\n==> Package Kubernetes Helm chart\n'
 # shellcheck disable=SC2086

@@ -3,6 +3,9 @@ replicaCount: 1
 nameOverride: ""
 fullnameOverride: ""
 
+container:
+  port: 8080
+
 image:
   repository: kc-secure-template
   tag: 0.1.0
