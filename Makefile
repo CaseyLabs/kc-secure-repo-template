@@ -45,6 +45,9 @@ renovate: ## runs self-hosted Renovate for this repository
 example: ## runs the bundled Hello World example project
 	sh scripts/example.sh "$(PROJECT_CFG_FILE)"
 
+k8s: ## validates, renders, and packages the bundled Kubernetes Helm chart
+	sh scripts/k8s.sh "$(PROJECT_CFG_FILE)"
+
 infra: ## builds/tests/plans the bundled infra workspace and applies it when APPLY=true
 	sh scripts/infra.sh "$(PROJECT_CFG_FILE)"
 

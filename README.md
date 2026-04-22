@@ -25,6 +25,7 @@
 - GitHub Actions CI workflow templates
 - Automated tooling/dependency version upgrade checks
 - Terraform configs for creating new repos
+- Optional Kubernetes Helm deployment scaffold under `config/k8s/`
 - Reproducible builds with pinned SHA checksums to help prevent supply-chain attacks <sup>[[1]](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions)</sup>
 
 ## Example Output
@@ -68,6 +69,7 @@ make example    # Builds/tests/runs an example container
 - Then customize the following files to fit your project/code base:
 
   - `config/project.cfg`
+  - `config/k8s/` if your project also needs the optional Kubernetes scaffold
   - `Dockerfile`
   - `scripts/*.sh`
 
@@ -89,12 +91,33 @@ make scan     # run security and secret scanning
 make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
 make renovate # Runs self-hosted Renovate for this repository
 make dist     # build release artifacts to `./dist`
+make k8s      # lint, render, and package the optional Helm chart in `./config/k8s/chart`
 make infra    # build/test/plan the Terraform config from `./config/infra`
 ```
 
 Version tag builds publish the generated release archive and integrity outputs
 to the GitHub Release page. The same files are also retained as the release
 workflow artifact bundle for CI evidence.
+
+## Optional Kubernetes Support
+
+The template includes an optional Helm chart under `config/k8s/chart` for
+derived repositories that deploy to Kubernetes.
+
+Use:
+
+```shell
+make k8s
+```
+
+That flow runs locally in a container and:
+
+- lints the chart
+- renders manifests
+- packages the chart
+
+It does not contact a cluster or perform `helm install`. Keep Kubernetes-owned
+static assets in `config/k8s/`; use `scripts/` only for `make`-target glue.
 
 ## AI Agents Commands
 
@@ -119,6 +142,7 @@ $security-review    # Performs a security audit of the repo, using `.agents/skil
 ├── config/
 │   ├── project.cfg           # Project configuration
 │   ├── lockfile.cfg          # Pinned SHA checksums for project tooling
+│   ├── k8s/                  # Optional Kubernetes Helm scaffold
 │   └── infra/                # Terraform example for GitHub repo hardening
 ├── .github/
 │   └── workflows/            # GitHub Actions workflows

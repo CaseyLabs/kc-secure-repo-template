@@ -122,6 +122,9 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	"${project_image}" \
 	sh -eu -c 'find scripts -type f -name '"'"'*.sh'"'"' -print | LC_ALL=C sort | while IFS= read -r path; do sh -n "${path}"; done && sh ./scripts/template.sh manifest'
 
+printf '\n==> Render Kubernetes manifests\n'
+sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >/tmp/k8s-scan.txt
+
 # Secret scanning is security-sensitive, so require a digest-pinned scanner image.
 secret_scan_image=${DEV_SCAN_GITLEAKS_IMAGE_LOCK}
 case "${secret_scan_image}" in
@@ -205,6 +208,24 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--exit-code 1 \
 	--skip-version-check \
 	/workspace
+
+printf '\n==> Run Kubernetes manifest scan\n'
+docker run --rm --user "${docker_uid}:${docker_gid}" \
+	--cap-drop=ALL \
+	--security-opt=no-new-privileges:true \
+	-e HOME="${docker_home}" \
+	-e XDG_CACHE_HOME="${docker_cache_home}" \
+	-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
+	-v "${docker_home_source}:${docker_home}" \
+	-v "${docker_tmpdir}:/tmp" \
+	-v "$(pwd):/workspace" \
+	-w /workspace \
+	"${trivy_scan_image}" \
+	config \
+	--severity HIGH,CRITICAL \
+	--exit-code 1 \
+	--skip-version-check \
+	/workspace/.tmp/k8s/rendered
 
 printf '\n==> Check workflow pins\n'
 # Finally, verify that workflow action references stay fully pinned and documented.

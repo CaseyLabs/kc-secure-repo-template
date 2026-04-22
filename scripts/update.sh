@@ -150,6 +150,7 @@ resolve_image() {
 dev_base_image_lock=$(resolve_image "${DEV_BASE_IMAGE}")
 dev_go_image_lock=$(resolve_image "${DEV_GO_IMAGE}")
 dev_terraform_image_lock=$(resolve_image "${DEV_TERRAFORM_IMAGE}")
+dev_k8s_helm_image_lock=$(resolve_image "${DEV_K8S_HELM_IMAGE}")
 dev_scan_gitleaks_image_lock=$(resolve_image "${DEV_SCAN_GITLEAKS_IMAGE}")
 dev_scan_actionlint_image_lock=$(resolve_image "${DEV_SCAN_ACTIONLINT_IMAGE}")
 dev_scan_trivy_image_lock=$(resolve_image "${DEV_SCAN_TRIVY_IMAGE}")
@@ -166,6 +167,7 @@ DEV_PACKAGE_SNAPSHOT_LOCK='${DEV_PACKAGE_SNAPSHOT_LOCK}'
 DEV_BASE_IMAGE_LOCK='${dev_base_image_lock}'
 DEV_GO_IMAGE_LOCK='${dev_go_image_lock}'
 DEV_TERRAFORM_IMAGE_LOCK='${dev_terraform_image_lock}'
+DEV_K8S_HELM_IMAGE_LOCK='${dev_k8s_helm_image_lock}'
 DEV_SCAN_GITLEAKS_IMAGE_LOCK='${dev_scan_gitleaks_image_lock}'
 DEV_SCAN_ACTIONLINT_IMAGE_LOCK='${dev_scan_actionlint_image_lock}'
 DEV_SCAN_TRIVY_IMAGE_LOCK='${dev_scan_trivy_image_lock}'

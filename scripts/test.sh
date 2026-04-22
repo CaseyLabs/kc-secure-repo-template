@@ -197,6 +197,7 @@ template)
 	make -n build | grep -q 'sh scripts/build.sh "' || fail 'make build should call scripts/build.sh'
 	make -n test | grep -q 'sh scripts/test.sh "' || fail 'make test should call scripts/test.sh'
 	make -n scan | grep -q 'sh scripts/scan.sh "' || fail 'make scan should call scripts/scan.sh'
+	make -n k8s | grep -q 'sh scripts/k8s.sh "' || fail 'make k8s should call scripts/k8s.sh'
 	make -n dist | grep -q 'sh scripts/dist.sh "' || fail 'make dist should call scripts/dist.sh'
 	! grep -qx 'config/project.cfg' .dockerignore || fail '.dockerignore should not exclude tracked config/project.cfg'
 	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
@@ -213,6 +214,10 @@ template)
 	PROJECT_CFG_FILE=config/project.cfg make infra >/tmp/template-infra.txt
 	[ ! -d dist ] || fail 'make infra should not create root dist'
 	assert_no_nested_dist_dirs
+	PROJECT_CFG_FILE=config/project.cfg make k8s >/tmp/template-k8s.txt
+	grep -q 'Rendered manifest:' /tmp/template-k8s.txt || fail 'make k8s should render the bundled Helm chart'
+	[ -f .tmp/k8s/rendered/kc-secure-template.yaml ] || fail 'make k8s should write a rendered Kubernetes manifest'
+	find .tmp/k8s/package -maxdepth 1 -type f -name '*.tgz' | grep -q . || fail 'make k8s should package the bundled Helm chart'
 	sh ./scripts/template.sh manifest
 	tail -n +2 dist/template-manifest.txt >/tmp/template-manifest.txt
 	list_template_files >/tmp/template-expected-manifest.txt
@@ -259,6 +264,13 @@ DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cb
 DEV_SCAN_ACTIONLINT_IMAGE_LOCK='rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667'
 ENABLE_SBOM='false'
 ENABLE_GRYPE='false'
+DEV_K8S_HELM_IMAGE='alpine/helm:3.19.0'
+K8S_CHART_PATH='config/k8s/chart'
+K8S_RELEASE_NAME='smoke-go'
+K8S_NAMESPACE='smoke'
+K8S_VALUES_FILE=''
+K8S_IMAGE_REPOSITORY='example.com/template-go-smoke'
+K8S_IMAGE_TAG='smoke'
 EOF
 		cat >Dockerfile <<'EOF'
 # syntax=docker/dockerfile:1
@@ -316,9 +328,11 @@ EOF
 		chmod +x scripts/scan.sh scripts/dist.sh
 		# The copied template should still be easy to adapt to a simple Go repository.
 		make scan PROJECT_CFG_FILE=config/project.cfg >/dev/null
+		make k8s PROJECT_CFG_FILE=config/project.cfg >/dev/null
 		make dist PROJECT_CFG_FILE=config/project.cfg >/dev/null
 		[ -d dist ] || fail 'make dist should create root dist'
 		[ ! -d src/dist ] || fail 'make dist should not create src/dist'
+		[ -f .tmp/k8s/rendered/smoke-go.yaml ] || fail 'make k8s should render the optional Helm chart in a copied repo'
 		assert_no_nested_dist_dirs
 	)
 	(
