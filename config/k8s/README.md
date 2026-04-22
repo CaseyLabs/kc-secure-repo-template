@@ -5,6 +5,13 @@ This template ships an optional Helm chart under `config/k8s/chart`.
 Use it when a derived repository wants a simple Kubernetes deployment scaffold
 without changing the template's default Docker-first local workflow.
 
+If you are new to Kubernetes:
+
+- a `Deployment` tells Kubernetes how many copies of your app to run
+- a `Service` gives those app copies a stable in-cluster network address
+- an `Ingress` is an optional HTTP entry point from outside the cluster
+- a Helm chart is a reusable package of Kubernetes YAML templates and defaults
+
 ## What It Includes
 
 - `Deployment`

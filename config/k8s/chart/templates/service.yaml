@@ -5,12 +5,17 @@ metadata:
   labels:
     {{- include "app.labels" . | nindent 4 }}
 spec:
+  # A Service gives Pods a stable DNS name and virtual IP even though the Pods
+  # themselves may be recreated with different IP addresses over time.
   type: {{ .Values.service.type }}
   selector:
+    # Traffic goes to Pods whose labels match this selector.
     app.kubernetes.io/name: {{ include "app.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
   ports:
     - name: http
+      # `port` is the Service port clients use. `targetPort` is the named
+      # container port exposed by the Pods selected above.
       port: {{ .Values.service.port }}
       targetPort: http
       protocol: TCP

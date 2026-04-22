@@ -11,10 +11,13 @@ metadata:
   {{- end }}
 spec:
   {{- if .Values.ingress.className }}
+  # `ingressClassName` tells Kubernetes which ingress controller should handle
+  # this object, for example `nginx` or a cloud-provider-specific controller.
   ingressClassName: {{ .Values.ingress.className }}
   {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
+    # Each rule maps an external host/path combination to the internal Service.
     - host: {{ .host }}
       http:
         paths:
@@ -29,6 +32,7 @@ spec:
           {{- end }}
     {{- end }}
   {{- with .Values.ingress.tls }}
+  # TLS usually references a Secret created separately or by cert-manager.
   tls:
     {{- toYaml . | nindent 4 }}
   {{- end }}
