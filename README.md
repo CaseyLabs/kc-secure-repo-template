@@ -111,6 +111,7 @@ make update   # Updates the pinned SHA checksums in `./config/lockfile.cfg`
 make renovate # Runs self-hosted Renovate for this repository
 make dist     # build release artifacts to `./dist`
 make k8s      # lint/render/package Helm chart in `./config/k8s/chart`
+make k8s-test-local # build config/k8s/Dockerfile.k8s and run kubectl server-side dry-run with your kubeconfig
 make infra    # build/test/plan Terraform config from `./config/infra`
 ```
 
@@ -150,6 +151,7 @@ Use:
 
 ```shell
 make k8s
+make k8s-test-local
 ```
 
 That flow runs locally in a container and:
@@ -157,8 +159,13 @@ That flow runs locally in a container and:
 - lints the chart
 - renders manifests
 - packages the chart
+- `make k8s-test-local` also builds `config/k8s/Dockerfile.k8s` and runs `kubectl apply --dry-run=server` against your current cluster context
 - It does not contact a cluster or perform `helm install`
 - Keep Kubernetes-owned static assets in `config/k8s/`
+
+`make k8s-test-local` requires a real kubeconfig. By default it uses `~/.kube/config`.
+You can point it at another file with `K8S_TEST_LOCAL_KUBECONFIG=/path/to/config`
+and select a context with `K8S_TEST_LOCAL_CONTEXT=name`.
 
 ---
 

@@ -188,7 +188,7 @@ EOF
 	rm -rf "${workdir}"
 }
 
-test_k8s_render_dir_scan_path() {
+test_k8s_render_file_scan_path() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
 
@@ -202,10 +202,15 @@ printf '%s\n' "$*" >>docker.log
 exit 0
 EOF
 		chmod +x fake-bin/docker
+		cat >config/project.cfg.test <<'EOF'
+. ./config/project.cfg
+K8S_RENDER_DIR='out/k8s/rendered'
+K8S_RELEASE_NAME='custom-release'
+EOF
 		PATH="${workdir}/fake-bin:${PATH}" \
-			K8S_RENDER_DIR='out/k8s/rendered' \
-			sh ./scripts/scan.sh config/project.cfg >/tmp/template-scan-render-dir.txt
-		grep -F -- '/workspace/out/k8s/rendered' docker.log || fail 'scan should pass the configured Kubernetes render directory to Trivy'
+			sh ./scripts/scan.sh config/project.cfg.test >/tmp/template-scan-render-dir.txt
+		grep -F -- '/workspace/out/k8s/rendered/custom-release.yaml' docker.log || fail 'scan should pass the current rendered Kubernetes manifest to Trivy'
+		! grep -F -- '/workspace/out/k8s/rendered ' docker.log >/dev/null 2>&1 || fail 'scan should not pass the entire Kubernetes render directory to Trivy'
 	)
 	rm -rf "${workdir}"
 }
@@ -313,6 +318,70 @@ EOF
 	rm -rf "${workdir}"
 }
 
+test_k8s_test_local_uses_kubeconfig_and_server_dry_run() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		mkdir -p fake-bin fake-kubeconfig config/k8s .tmp/k8s/rendered scripts
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+
+case "$1" in
+build)
+	exit 0
+	;;
+run)
+	printf '%s\n' 'service/test-svc' > /tmp/k8s-test-local-dry-run.txt
+	exit 0
+	;;
+esac
+
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		cat >scripts/k8s.sh <<'EOF'
+#!/bin/sh
+set -eu
+mkdir -p .tmp/k8s/rendered
+cat >.tmp/k8s/rendered/kc-secure-template.yaml <<'YAML'
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-svc
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080
+  selector:
+    app: test
+YAML
+EOF
+		chmod +x scripts/k8s.sh
+		cat >fake-kubeconfig/config <<'EOF'
+apiVersion: v1
+kind: Config
+clusters: []
+contexts: []
+current-context: ''
+users: []
+EOF
+		PATH="${workdir}/fake-bin:${PATH}" \
+			K8S_TEST_LOCAL_KUBECONFIG="${workdir}/fake-kubeconfig/config" \
+			K8S_TEST_LOCAL_CONTEXT='kind-local' \
+			sh ./scripts/k8s-test-local.sh config/project.cfg >/tmp/template-k8s-test-local.txt
+		grep -F -- '-f config/k8s/Dockerfile.k8s' docker.log || fail 'k8s-test-local should build config/k8s/Dockerfile.k8s'
+		grep -F -- '--dry-run=server' docker.log || fail 'k8s-test-local should use kubectl server-side dry-run'
+		grep -F -- "--context kind-local" docker.log || fail 'k8s-test-local should pass the configured Kubernetes context'
+		grep -F -- "${workdir}/fake-kubeconfig:/tmp/k8s-test-kubeconfig:ro" docker.log || fail 'k8s-test-local should mount the kubeconfig directory read-only'
+		grep -q 'Resources checked by server-side dry-run: 1' /tmp/template-k8s-test-local.txt || fail 'k8s-test-local should report the dry-run resource count'
+	)
+	rm -rf "${workdir}"
+}
+
 case "${mode}" in
 src)
 	# Validate the default bundled Go example the same way a derived repo would.
@@ -393,6 +462,7 @@ template)
 	make -n test | grep -q 'sh scripts/test.sh "' || fail 'make test should call scripts/test.sh'
 	make -n scan | grep -q 'sh scripts/scan.sh "' || fail 'make scan should call scripts/scan.sh'
 	make -n k8s | grep -q 'sh scripts/k8s.sh "' || fail 'make k8s should call scripts/k8s.sh'
+	make -n k8s-test-local | grep -q 'sh scripts/k8s-test-local.sh "' || fail 'make k8s-test-local should call scripts/k8s-test-local.sh'
 	make -n dist | grep -q 'sh scripts/dist.sh "' || fail 'make dist should call scripts/dist.sh'
 	! grep -qx 'config/project.cfg' .dockerignore || fail '.dockerignore should not exclude tracked config/project.cfg'
 	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
@@ -400,8 +470,9 @@ template)
 	assert_no_nested_dist_dirs
 	test_optional_k8s_update_compat
 	test_optional_k8s_scan_skip
-	test_k8s_render_dir_scan_path
+	test_k8s_render_file_scan_path
 	test_k8s_chart_packaging_uses_project_defaults
+	test_k8s_test_local_uses_kubeconfig_and_server_dry_run
 	rm -rf dist
 	# `make example` should exercise the demo without leaving release artifacts behind.
 	PROJECT_CFG_FILE=config/project.cfg make example >/tmp/template-example.txt
@@ -427,6 +498,13 @@ EOF
 	PROJECT_CFG_FILE=config/project.cfg K8S_VALUES_FILE=/tmp/template-k8s-values.yaml make k8s >/tmp/template-k8s-custom-port.txt
 	grep -q 'containerPort: 8080' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should keep the container port independent from the Service port'
 	grep -q 'port: 80' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should allow the Service port to differ from the container port'
+	cat >/tmp/template-k8s-digest.cfg <<'EOF'
+. ./config/project.cfg
+K8S_IMAGE_REPOSITORY='ghcr.io/example/app'
+K8S_IMAGE_TAG='sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+EOF
+	sh ./scripts/k8s.sh /tmp/template-k8s-digest.cfg >/tmp/template-k8s-digest.txt
+	grep -q 'image: "ghcr.io/example/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should render digest-pinned images with @sha256 references'
 	sh ./scripts/template.sh manifest
 	tail -n +2 dist/template-manifest.txt >/tmp/template-manifest.txt
 	list_template_files >/tmp/template-expected-manifest.txt

@@ -128,10 +128,12 @@ case "${k8s_chart_path}" in
 *) k8s_chart_path="./${k8s_chart_path}" ;;
 esac
 k8s_render_dir=${K8S_RENDER_DIR:-.tmp/k8s/rendered}
-case "${k8s_render_dir}" in
-/*) k8s_render_dir_scan_path=${k8s_render_dir} ;;
-./*) k8s_render_dir_scan_path="/workspace/${k8s_render_dir#./}" ;;
-*) k8s_render_dir_scan_path="/workspace/${k8s_render_dir}" ;;
+k8s_release_name=${K8S_RELEASE_NAME:-kc-secure-template}
+k8s_render_file="${k8s_render_dir}/${k8s_release_name}.yaml"
+case "${k8s_render_file}" in
+/*) k8s_render_file_scan_path=${k8s_render_file} ;;
+./*) k8s_render_file_scan_path="/workspace/${k8s_render_file#./}" ;;
+*) k8s_render_file_scan_path="/workspace/${k8s_render_file}" ;;
 esac
 k8s_helm_image=${DEV_K8S_HELM_IMAGE_LOCK:-${DEV_K8S_HELM_IMAGE:-}}
 
@@ -245,7 +247,7 @@ if [ -f /tmp/k8s-scan.txt ]; then
 		--severity HIGH,CRITICAL \
 		--exit-code 1 \
 		--skip-version-check \
-		"${k8s_render_dir_scan_path}"
+		"${k8s_render_file_scan_path}"
 else
 	printf '%s\n' 'No rendered Kubernetes manifests available; skipping Trivy config scan'
 fi

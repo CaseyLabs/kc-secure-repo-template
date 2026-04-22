@@ -31,7 +31,7 @@ spec:
       containers:
         - name: app
           # The Pod runs exactly one app container in this template.
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{- if hasPrefix "sha256:" .Values.image.tag -}}{{ .Values.image.repository }}@{{ .Values.image.tag }}{{- else -}}{{ .Values.image.repository }}:{{ .Values.image.tag }}{{- end -}}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
