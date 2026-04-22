@@ -163,6 +163,14 @@ That flow runs locally in a container and:
 - It does not contact a cluster or perform `helm install`
 - Keep Kubernetes-owned static assets in `config/k8s/`
 
+`make k8s` reads its main defaults from `config/project.cfg`, but explicit
+`K8S_*` environment overrides still win. `K8S_VALUES_FILE`, `K8S_RENDER_DIR`,
+and `K8S_PACKAGE_DIR` may point either inside the repository or at absolute
+host paths outside it.
+
+By default, the generated Helm release name and chart name are sanitized from
+`PROJECT_NAME` into a DNS-safe Kubernetes name.
+
 `make k8s-test-local` requires a real kubeconfig. By default it uses `~/.kube/config`.
 You can point it at another file with `K8S_TEST_LOCAL_KUBECONFIG=/path/to/config`
 and select a context with `K8S_TEST_LOCAL_CONTEXT=name`.
