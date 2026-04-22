@@ -51,8 +51,7 @@ server-side dry-run so it does not persist resources.
   - `K8S_PACKAGE_DIR`
   - `K8S_RENDER_DIR`
   - `K8S_VALUES_FILE`
-  - `K8S_IMAGE_REPOSITORY`
-  - `K8S_IMAGE_TAG` set this to an explicit image version or digest-backed release tag
+  - `K8S_IMAGE_REPOSITORY` / `K8S_IMAGE_TAG` set these when Kubernetes should use a different image than `PROJECT_IMAGE`; leave them blank to inherit the repository and tag from `PROJECT_IMAGE`
   - `DEV_K8S_KUBECTL_IMAGE`
 - `config/k8s/chart/values.yaml`
 - `config/k8s/chart/templates/*.yaml`
@@ -68,6 +67,11 @@ does not expose unrelated kubeconfig files from the host.
 By default, `K8S_NAME_OVERRIDE` follows `PROJECT_NAME`, so the chart's
 `app.kubernetes.io/name` label derives from the repository config without
 hard-coding project-specific names into `values.yaml`.
+
+By default, `K8S_RELEASE_NAME` also follows `PROJECT_NAME`, and both defaults
+are resolved when `make k8s` runs so layered configs can source
+`config/project.cfg` first and then override `PROJECT_NAME` without carrying
+stale Kubernetes names forward.
 
 `K8S_VALUES_FILE`, `K8S_RENDER_DIR`, and `K8S_PACKAGE_DIR` may be either
 repository-relative paths or absolute host paths.
