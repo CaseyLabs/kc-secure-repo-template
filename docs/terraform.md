@@ -1,8 +1,6 @@
-# Infra Workspace
+# Terraform Support
 
-This workspace shows how to adapt the template into a repository that uses
-Terraform to create and harden a GitHub repository through the
-`integrations/github` provider.
+This template ships an optional Terraform workspace under `config/infra` to create and harden a GitHub repository.
 
 Purpose:
 
