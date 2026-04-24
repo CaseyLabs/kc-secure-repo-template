@@ -11,7 +11,7 @@
   - [Setup](#setup)
   - [Usage](#usage)
 - [Repository Layout](#repository-layout)
-- [Further Reading](#further-reading)
+- [Documentation](#documentation)
 - [Repo Options](#repo-options)
   - [Kubernetes Support](#kubernetes-k8s-support)
   - [AI Agents Commands](#ai-agents-commands)
@@ -145,23 +145,16 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 
 ---
 
-## Further Reading
+## Documentation
 
-- [`docs/README.md`](docs/README.md): table of contents for the docs folder.
-- [`docs/template-adoption.md`](docs/template-adoption.md): how to adapt the
-  template into a real project.
-- [`docs/workflows.md`](docs/workflows.md): what each `make` workflow does and
-  why local and CI commands stay aligned.
-- [`docs/security-model.md`](docs/security-model.md): security posture,
-  rationale, and GitHub-side controls.
-- [`docs/release-and-packaging.md`](docs/release-and-packaging.md): template
-  archive, release artifacts, SBOMs, checksums, and attestations.
-- [`docs/dependency-updates.md`](docs/dependency-updates.md): Dependabot,
-  Renovate, cooldowns, and lock refreshes.
-- [`docs/ai-agent-support.md`](docs/ai-agent-support.md): optional agent
-  guidance included with the template.
-- [`docs/github-ci.md`](docs/github-ci.md): GitHub Actions and repository
-  hardening guidance.
+- [Template Overview](docs/README.md):
+  - [Template Customization](docs/template-custom.md)
+  - [Build Commands](docs/build-commands.md)
+  - [Security Model](docs/security-model.md)
+  - [Github Actions CI/CD](docs/github-ci.md)
+  - [Release and Packaging](docs/release-and-packaging.md)
+  - [Dependency Updates](docs/dependency-updates.md)
+  - [AI Agent Support](docs/ai-agent-support.md)
 
 ---
 

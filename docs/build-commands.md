@@ -1,4 +1,4 @@
-# Workflow Guide
+# Project Build Commands
 
 Use `make help` as the source of truth for available root commands. The root
 targets are intentionally small; scripts under `scripts/` hold the implementation
