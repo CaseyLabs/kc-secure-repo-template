@@ -11,6 +11,7 @@
   - [Setup](#setup)
   - [Usage](#usage)
 - [Repository Layout](#repository-layout)
+- [Documentation](#documentation)
 - [Repo Options](#repo-options)
   - [Kubernetes Support](#kubernetes-k8s-support)
   - [AI Agents Commands](#ai-agents-commands)
@@ -128,6 +129,7 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 ├── CLAUDE.md                 # Claude Code shim that imports AGENTS.md
 ├── Makefile                  # For all `make` commands
 ├── Dockerfile                # Default nonroot dev/CI container image
+├── docs/                     # Project documentation
 ├── src/                      # Project source code (built into a container)
 ├── scripts/                  # Scripts used by the Makefile
 ├── config/
@@ -141,6 +143,21 @@ make infra    # build/test/plan Terraform config from `./config/infra`
     ├── code_review.md        # Repo-specific AI agent `/review` checklist
     └── skills/               # Repo-specific AI agent skills templates
 ```
+
+---
+
+## Documentation
+
+- [Template Overview](docs/README.md)
+  - [Template Customization](docs/template-custom.md)
+  - [Build Commands](docs/build-commands.md)
+  - [Security Model](docs/security-model.md)
+  - [Github Actions CI/CD](docs/github-ci.md)
+    - [Release and Packaging](docs/release-and-packaging.md)
+    - [Dependency Updates](docs/dependency-updates.md)
+  - [AI Agent Support](docs/ai-agent-support.md)
+  - [Terraform Support](docs/terraform.md)
+  - [Kubernetes Support](docs/k8s.md)
 
 ---
 
