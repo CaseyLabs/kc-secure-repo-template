@@ -38,13 +38,15 @@ jobs:
       # Release tags should point at reviewed default-branch history. This keeps
       # a direct tag push from publishing an unmerged commit as a trusted release.
       - name: Verify release tag is on default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -eu
 
-          git fetch --no-tags origin "+refs/heads/${GITHUB_DEFAULT_BRANCH}:refs/remotes/origin/${GITHUB_DEFAULT_BRANCH}"
-          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${GITHUB_DEFAULT_BRANCH}"; then
+          git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${DEFAULT_BRANCH}"; then
             printf 'release tag %s (%s) is not reachable from origin/%s\n' \
-              "${GITHUB_REF_NAME}" "${GITHUB_SHA}" "${GITHUB_DEFAULT_BRANCH}" >&2
+              "${GITHUB_REF_NAME}" "${GITHUB_SHA}" "${DEFAULT_BRANCH}" >&2
             exit 1
           fi
       # Repository variables can override release integrity options without
