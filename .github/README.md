@@ -47,77 +47,77 @@ container-first, pinned, scanned, and reviewable.
 
 ## How This Template Helps
 
-- Pull request code stays untrusted.
+- Pull request code stays untrusted:
   - PR checks use `pull_request`.
   - `make scan` rejects `pull_request_target` in checked-in workflows.
   - workflows use minimal permissions.
-- Workflow dependencies stay pinned.
+- Workflow dependencies stay pinned:
   - external Actions use full commit SHAs.
   - `make scan` enforces those pins.
   - Dependabot delays routine action updates before opening PRs.
-- Release artifacts stay traceable.
+- Release artifacts stay traceable:
   - release tags must point at default-branch history.
   - existing releases are not clobbered.
   - release outputs include checksums, SBOMs, scans, and attestations.
-- Credentials stay scoped.
+- Credentials stay scoped:
   - Renovate uses a GitHub App token.
   - workflows avoid broad default permissions.
   - secret scanning runs in the standard scan path.
-- Local and CI behavior stay aligned.
+- Local and CI behavior stay aligned:
   - workflows call `make` targets.
   - scripts hold implementation details.
   - Docker-based tools keep validation reproducible.
 
 ## Workflow Triggers
 
-- Use `pull_request` for PR validation.
+- Use `pull_request` for PR validation:
   - build
   - test
   - scan
   - package checks
-- Do not use `pull_request_target` for PR code execution.
+- Do not use `pull_request_target` for PR code execution:
   - no checkout of PR head code
   - no build/test of PR contents
   - no package or release from PR contents
-- Keep privileged PR metadata automation separate.
+- Keep privileged PR metadata automation separate:
   - prefer `workflow_run` handoff patterns when needed
   - treat artifacts from PR code as untrusted
 
 ## Credentials
 
-- Prefer narrow credentials.
+- Prefer narrow credentials:
   - GitHub Apps
   - OIDC
   - fine-grained tokens
-- Avoid broad credentials.
+- Avoid broad credentials:
   - personal access tokens
   - organization-wide secrets
   - credentials shared across unrelated repos
-- Rotate after suspected compromise.
+- Rotate after suspected compromise:
   - repository secrets
   - organization secrets
   - package-registry tokens
   - marketplace credentials
-- Review regularly.
+- Review regularly:
   - remove unused secrets
   - restrict organization secret access policies
   - confirm app permissions still match workflow needs
 
 ## Releases And Artifacts
 
-- Prefer immutable releases.
+- Prefer immutable releases:
   - enable immutable GitHub Releases where available
   - publish assets once
   - do not edit or clobber published assets
-- Protect release tags.
+- Protect release tags:
   - use tag rulesets for `refs/tags/v*`
   - reject tags outside default-branch history
-- Keep release evidence.
+- Keep release evidence:
   - checksums
   - SBOMs
   - vulnerability scan reports
   - GitHub artifact attestations
-- Protect external registries.
+- Protect external registries:
   - enable tag immutability when supported
   - monitor unexpected tag or digest changes
 
