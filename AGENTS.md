@@ -32,7 +32,7 @@ make update
 make example
 ```
 
-Use `make scan` for template security and workflow checks, and `make dist` for release artifact and integrity outputs when those areas are affected. Treat specialized targets such as `make shell` and `make infra` as task-specific conveniences rather than the core public interface.
+Use `make scan` for template security and workflow checks, and `make dist` for release artifact and integrity outputs when those areas are affected. Use `make k8s` for the optional Kubernetes Helm scaffold and `make k8s-test-local` only when a real kubeconfig/context is available for server-side dry-run validation. Treat specialized targets such as `make shell`, `make renovate`, `make k8s`, `make k8s-test-local`, and `make infra` as task-specific conveniences rather than the core public interface.
 
 Rules:
 
@@ -51,6 +51,8 @@ Typical routing:
 - Use `template-infra-hardening` when changing or reviewing the Terraform-backed GitHub repository hardening workspace under `config/infra`.
 - Use `release-integrity` when working on SBOMs, attestations, artifact scanning, signing guidance, or release workflow safety.
 - Use `language-profile-guidance` when adding or revising optional Go, Node.js, SQL, or polyglot guidance.
+- Use `pr-draft-summary` when drafting a PR handoff after substantive repository changes.
+- Use `security-review` only when the user explicitly invokes `$security-review`; do not select it by semantic matching.
 
 If no matching skill exists, follow this file and the repository itself.
 
@@ -68,6 +70,9 @@ If no matching skill exists, follow this file and the repository itself.
 - `config/project.cfg` is the main customization point.
 - `Dockerfile` provides the development and CI runtime baseline.
 - `.github/workflows/` should call `make` targets instead of duplicating project logic inline.
+- `.agents/code_review.md` contains the detailed `/review` checklist; keep `AGENTS.md` focused on durable operating rules.
+- `.agents/skills/*/SKILL.md` contains task-specific agent workflows; keep skill routing in this file aligned with the actual local skills.
+- `config/infra/` and `config/k8s/` have subtree `AGENTS.md` files with local hazards and verification rules.
 - Keep template packaging and release manifests aligned.
 - Follow the repository's existing structure, naming, and style.
 - Do not introduce new dependencies unless necessary and justified.

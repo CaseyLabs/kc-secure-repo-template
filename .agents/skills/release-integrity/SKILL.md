@@ -27,7 +27,7 @@ Use this skill when working on release and artifact integrity for this template.
 
 ## Method
 - Treat release workflows as sensitive paths.
-- Review `scripts/dist.sh`, `.github/workflows/release.yml`, and release-related `project.env` settings as the core release-integrity surface.
+- Review `scripts/dist.sh`, `.github/workflows/build.yml`, and release-related `config/project.cfg` settings as the core release-integrity surface.
 - Prefer explicit tool versions and pinned actions where practical.
 - Verify downloaded tools with checksums or signatures when feasible.
 - Keep SBOM, Grype, checksum, provenance, attestation, and compliance-summary outputs aligned when release behavior changes.
