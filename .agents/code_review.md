@@ -149,7 +149,7 @@ When relevant, check whether the change remains aligned across:
 - `Makefile`
 - `scripts/`
 - `Dockerfile`
-- `project.env`
+- `config/project.cfg`
 - `.github/workflows/`
 - packaging and release manifests
 - README and setup or usage docs
