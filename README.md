@@ -161,7 +161,6 @@ make k8s    # lint/render/package Helm chart in `./config/k8s/chart`
 ### AI Agents Commands
 
 This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
-Claude Code shims use `CLAUDE.md` files to import the matching `AGENTS.md` guidance instead of duplicating instructions.
 
 Example commands:
 
