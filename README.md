@@ -125,6 +125,7 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 ```text
 .
 ├── AGENTS.md                 # Repo-specific AI agent guidance
+├── CLAUDE.md                 # Claude Code shim that imports AGENTS.md
 ├── Makefile                  # For all `make` commands
 ├── Dockerfile                # Default nonroot dev/CI container image
 ├── src/                      # Project source code (built into a container)
@@ -160,6 +161,7 @@ make k8s    # lint/render/package Helm chart in `./config/k8s/chart`
 ### AI Agents Commands
 
 This project includes Agentic commands and skills that can be used by AI CLI tools such as Codex CLI, Claude Code, etc.
+Claude Code shims use `CLAUDE.md` files to import the matching `AGENTS.md` guidance instead of duplicating instructions.
 
 Example commands:
 
