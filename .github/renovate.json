@@ -48,7 +48,9 @@
   "packageRules": [
     {
       "matchManagers": ["custom.regex"],
-      "groupName": "project tooling and images"
+      "groupName": "project tooling and images",
+      "minimumReleaseAge": "7 days",
+      "internalChecksFilter": "strict"
     }
   ]
 }

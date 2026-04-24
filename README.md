@@ -184,6 +184,12 @@ This template also uses third-party tools to automate the upgrade of project ima
   - `.github/renovate.json`
   - `.github/workflows/renovate.yml`
 
+Dependency update bots wait 7 days before opening normal version-update PRs.
+This cooldown gives newly published actions, images, and tooling releases time
+for malicious releases, yanks, or incident reports to surface before the
+template resolves and reviews new pins. Security updates are still expected to
+bypass cooldowns where the update bot supports that behavior.
+
   _Note_: Renovate requires a GitHub App to be installed in order to operate. To create one, run:
 
   ```shell
