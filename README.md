@@ -11,6 +11,7 @@
   - [Setup](#setup)
   - [Usage](#usage)
 - [Repository Layout](#repository-layout)
+- [Further Reading](#further-reading)
 - [Repo Options](#repo-options)
   - [Kubernetes Support](#kubernetes-k8s-support)
   - [AI Agents Commands](#ai-agents-commands)
@@ -141,6 +142,26 @@ make infra    # build/test/plan Terraform config from `./config/infra`
     ├── code_review.md        # Repo-specific AI agent `/review` checklist
     └── skills/               # Repo-specific AI agent skills templates
 ```
+
+---
+
+## Further Reading
+
+- [`docs/README.md`](docs/README.md): table of contents for the docs folder.
+- [`docs/template-adoption.md`](docs/template-adoption.md): how to adapt the
+  template into a real project.
+- [`docs/workflows.md`](docs/workflows.md): what each `make` workflow does and
+  why local and CI commands stay aligned.
+- [`docs/security-model.md`](docs/security-model.md): security posture,
+  rationale, and GitHub-side controls.
+- [`docs/release-and-packaging.md`](docs/release-and-packaging.md): template
+  archive, release artifacts, SBOMs, checksums, and attestations.
+- [`docs/dependency-updates.md`](docs/dependency-updates.md): Dependabot,
+  Renovate, cooldowns, and lock refreshes.
+- [`docs/ai-agent-support.md`](docs/ai-agent-support.md): optional agent
+  guidance included with the template.
+- [`docs/github-ci.md`](docs/github-ci.md): GitHub Actions and repository
+  hardening guidance.
 
 ---
 
