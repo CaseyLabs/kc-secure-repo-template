@@ -102,7 +102,8 @@ jobs:
           subject-path: "dist/**"
       # Publish the human- and machine-readable integrity files to the GitHub
       # Release page. The full generated dist/ bundle remains available as the
-      # Actions artifact for CI evidence.
+      # Actions artifact for CI evidence. `gh release create` stages assets on a
+      # draft before publishing, which is compatible with immutable releases.
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -118,15 +119,13 @@ jobs:
           done
 
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            for asset in grype-report.txt kc-secure-repo-template.tar.gz template-manifest.txt; do
-              gh release delete-asset "${RELEASE_TAG}" "${asset}" --yes >/dev/null 2>&1 || true
-            done
-            # shellcheck disable=SC2086
-            gh release upload "${RELEASE_TAG}" ${release_assets} --clobber
-          else
-            # shellcheck disable=SC2086
-            gh release create "${RELEASE_TAG}" ${release_assets} \
-              --title "${RELEASE_TAG}" \
-              --generate-notes \
-              --latest
+            printf 'release %s already exists; refusing to modify published assets\n' "${RELEASE_TAG}" >&2
+            exit 1
           fi
+
+          # shellcheck disable=SC2086
+          gh release create "${RELEASE_TAG}" ${release_assets} \
+            --title "${RELEASE_TAG}" \
+            --generate-notes \
+            --latest \
+            --verify-tag
