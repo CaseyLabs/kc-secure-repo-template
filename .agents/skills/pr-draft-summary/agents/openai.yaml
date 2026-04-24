@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Draft Summary"
+  short_description: "Prepare concise PR handoff text"
+  default_prompt: "Use $pr-draft-summary to prepare a concise pull request title and body for this finished change."
