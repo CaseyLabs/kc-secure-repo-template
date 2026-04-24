@@ -18,6 +18,7 @@ list_template_files() {
 	export LC_ALL=C
 	cat <<'EOF' |
 AGENTS.md
+CLAUDE.md
 Dockerfile
 LICENSE.md
 Makefile
@@ -43,7 +44,9 @@ EOF
 					! -name '*.tfstate' \
 					! -name '*.tfstate.*' \
 					! -name '*.tfplan' \
+					! -name '*.tfvars' \
 					! -name 'crash.log' \
+					! -path 'src/app' \
 					-print
 			elif [ -e "${path}" ]; then
 				printf '%s\n' "${path}"
@@ -117,6 +120,16 @@ assert_no_nested_dist_dirs() {
 		find . -mindepth 2 -type d -name dist -print >&2
 		fail 'dist directories must only exist at the repository root'
 	fi
+}
+
+test_local_state_is_not_packaged() {
+	mkdir -p config/infra src
+	: >config/infra/terraform.tfvars
+	: >src/app
+	sh ./scripts/template.sh files >/tmp/template-files-local-state.txt
+	! grep -qx 'config/infra/terraform.tfvars' /tmp/template-files-local-state.txt || fail 'template files should exclude local Terraform variable files'
+	! grep -qx 'src/app' /tmp/template-files-local-state.txt || fail 'template files should exclude the generated example binary'
+	rm -f config/infra/terraform.tfvars src/app
 }
 
 test_optional_k8s_update_compat() {
@@ -764,6 +777,7 @@ template)
 	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
 	check_workflow_action_pins
 	assert_no_nested_dist_dirs
+	test_local_state_is_not_packaged
 	test_optional_k8s_update_compat
 	test_optional_k8s_scan_skip
 	test_k8s_shell_inputs_are_not_executed

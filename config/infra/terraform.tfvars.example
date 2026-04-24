@@ -11,3 +11,7 @@ required_status_checks = [
   "test-repo",
   "scan-repo",
 ]
+
+release_tag_patterns = [
+  "refs/tags/v*",
+]

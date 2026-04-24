@@ -8,8 +8,10 @@
 **/*.tfstate
 **/*.tfstate.*
 **/*.tfplan
+**/*.tfvars
 **/crash.log
 dist
 **/dist
+src/app
 node_modules
 coverage

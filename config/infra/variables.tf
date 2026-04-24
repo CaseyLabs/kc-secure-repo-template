@@ -175,6 +175,12 @@ variable "required_status_checks" {
   ]
 }
 
+variable "release_tag_patterns" {
+  description = "Release tag refs to protect from deletion or retagging."
+  type        = list(string)
+  default     = ["refs/tags/v*"]
+}
+
 variable "strict_status_checks" {
   description = "Require branches to be up to date before merging when status checks are configured."
   type        = bool
