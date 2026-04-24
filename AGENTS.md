@@ -115,12 +115,13 @@ When reviewing changes or using `/review`:
 ## Documentation
 
 - Update documentation when code changes materially affect setup, usage, behavior, configuration, security posture, or developer workflows.
+- Prefer short indented bullet-points when writing documentation, comments, or pull request descriptions.
 - Keep documentation changes tightly scoped to the task.
 - Ensure documentation reflects the actual workflow.
 - Avoid changing the root `README.md` unless it is factually wrong or behavior has changed; prefer focused subfolder `README.md` files for new detail.
-- When the same mistake, review comment, or workflow confusion appears more than once, propose a targeted update to `AGENTS.md` or the relevant `.agents/skills/*/SKILL.md`, but do not change instruction files unless the task explicitly asks for it.
-- Add or update a subtree `AGENTS.md` only when that subtree has real local rules, hazards, or verification needs.
-- Add code comments for non-obvious workflow, security, reproducibility, or template-adaptation decisions; avoid comments that restate obvious code.
+- When the same mistake, review comment, or workflow confusion appears more than once, propose a targeted update to `AGENTS.md` or the relevant `.agents/skills/*/SKILL.md`, and prompt the user if they want the update made.
+- Add or update a subtree `AGENTS.md` when that subtree has real local rules, hazards, or verification needs.
+- Add code comments for non-obvious workflow, security, reproducibility, or template-adaptation decisions; be generous with your code comments, and assume the user is new to the tooling or frameworks.
 
 ## Definition of done
 
