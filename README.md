@@ -129,6 +129,7 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 ├── CLAUDE.md                 # Claude Code shim that imports AGENTS.md
 ├── Makefile                  # For all `make` commands
 ├── Dockerfile                # Default nonroot dev/CI container image
+├── docs/                     # Project documentation
 ├── src/                      # Project source code (built into a container)
 ├── scripts/                  # Scripts used by the Makefile
 ├── config/
