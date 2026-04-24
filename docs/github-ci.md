@@ -1,10 +1,20 @@
 # GitHub Configuration
 
-This folder contains GitHub-native automation for derived repositories.
+This project's `.github` folder contains the GitHub Actions CI configs and workflows:
 
-- Keep it small and reviewable.
-- Keep workflow logic aligned with root `Makefile` targets.
-- Keep privileged GitHub behavior separate from untrusted pull request code.
+```
+.
+└── .github/
+    ├── dependabot.yml
+    ├── renovate
+    │   └── setup-github-app.sh
+    ├── renovate.json
+    └── workflows
+    ├── build.yml
+    ├── renovate.yml
+    ├── scan.yml
+    └── test.yml
+```
 
 ## Folder Contents
 
