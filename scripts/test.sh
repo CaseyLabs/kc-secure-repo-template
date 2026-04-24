@@ -114,12 +114,53 @@ check_workflow_action_pins() {
 	done
 }
 
+check_workflow_trigger_policy() {
+	awk '
+		{
+			line = $0
+			sub(/[[:space:]]+#.*$/, "", line)
+			if (line ~ /(^|[^A-Za-z0-9_-])pull_request_target([^A-Za-z0-9_-]|$)/) {
+				printf "%s:%d: pull_request_target is not allowed in template workflows\n", FILENAME, FNR
+				found = 1
+			}
+		}
+		END {
+			exit found ? 1 : 0
+		}
+	' .github/workflows/*.yml
+}
+
 # Nested `dist/` directories are usually an accidental packaging bug.
 assert_no_nested_dist_dirs() {
 	if find . -mindepth 2 -type d -name dist | grep -q .; then
 		find . -mindepth 2 -type d -name dist -print >&2
 		fail 'dist directories must only exist at the repository root'
 	fi
+}
+
+test_workflow_pull_request_target_is_rejected() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		cat >.github/workflows/unsafe.yml <<'EOF'
+name: unsafe
+on:
+  pull_request_target:
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
+		if check_workflow_trigger_policy >/tmp/template-workflow-trigger-policy.txt 2>&1; then
+			fail 'workflow trigger policy should reject pull_request_target'
+		fi
+		grep -q 'pull_request_target is not allowed' /tmp/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report pull_request_target'
+	)
+	rm -rf "${workdir}"
 }
 
 test_local_state_is_not_packaged() {
@@ -776,7 +817,9 @@ template)
 	! grep -qx 'config/project.cfg' .dockerignore || fail '.dockerignore should not exclude tracked config/project.cfg'
 	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
 	check_workflow_action_pins
+	check_workflow_trigger_policy
 	assert_no_nested_dist_dirs
+	test_workflow_pull_request_target_is_rejected
 	test_local_state_is_not_packaged
 	test_optional_k8s_update_compat
 	test_optional_k8s_scan_skip

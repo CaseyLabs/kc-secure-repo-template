@@ -97,6 +97,25 @@ check_workflow_action_pins() {
 	done
 }
 
+# Reject privileged PR workflow triggers by default. `pull_request_target` can be
+# safe only for tightly reviewed metadata-only automation, but this template's
+# default CI paths build and scan pull request contents as untrusted code.
+check_workflow_trigger_policy() {
+	awk '
+		{
+			line = $0
+			sub(/[[:space:]]+#.*$/, "", line)
+			if (line ~ /(^|[^A-Za-z0-9_-])pull_request_target([^A-Za-z0-9_-]|$)/) {
+				printf "%s:%d: pull_request_target is not allowed in template workflows\n", FILENAME, FNR
+				found = 1
+			}
+		}
+		END {
+			exit found ? 1 : 0
+		}
+	' .github/workflows/*.yml
+}
+
 printf '\n==> Build project image\n'
 # GitHub Actions can opt into Buildx cache export/import without changing local defaults.
 if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
@@ -273,5 +292,7 @@ else
 fi
 
 printf '\n==> Check workflow pins\n'
-# Finally, verify that workflow action references stay fully pinned and documented.
+# Finally, verify that workflow action references and triggers stay within the
+# template's reviewed CI/CD policy.
 check_workflow_action_pins
+check_workflow_trigger_policy
