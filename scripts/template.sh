@@ -33,7 +33,9 @@ EOF
 					! -name '*.tfstate' \
 					! -name '*.tfstate.*' \
 					! -name '*.tfplan' \
+					! -name '*.tfvars' \
 					! -name 'crash.log' \
+					! -path 'src/app' \
 					-print
 			elif [ -e "${path}" ]; then
 				printf '%s\n' "${path}"

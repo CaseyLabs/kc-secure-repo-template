@@ -99,3 +99,22 @@ resource "github_repository_ruleset" "default_branch" {
 
   depends_on = [github_branch_default.default]
 }
+
+resource "github_repository_ruleset" "release_tags" {
+  name        = "release-tag-protection"
+  repository  = github_repository.repository.name
+  target      = "tag"
+  enforcement = var.ruleset_enforcement
+
+  conditions {
+    ref_name {
+      include = var.release_tag_patterns
+      exclude = []
+    }
+  }
+
+  rules {
+    deletion = true
+    update   = true
+  }
+}

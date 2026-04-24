@@ -4,9 +4,11 @@ dist/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.tfvars
 crash.log
 .cache/
 .tmp/
+src/app
 node_modules/
 coverage/
 .DS_Store
