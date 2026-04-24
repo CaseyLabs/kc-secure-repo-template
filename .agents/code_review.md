@@ -16,6 +16,17 @@ Prioritize findings that could cause:
 
 Prefer high-signal findings over broad commentary.
 
+## Local `/review` scope
+
+Treat `/review` runs as reviewer-only passes: inspect the selected diff, report prioritized and actionable findings, and do not edit the working tree during the review.
+
+Choose the review target deliberately:
+
+- use a base-branch review for PR-style feedback before opening or updating a pull request
+- use an uncommitted-changes review for staged, unstaged, and untracked local work
+- use a commit review when a specific SHA is the review unit
+- use custom review instructions for a narrow focus such as release integrity, accessibility, or template portability
+
 ## Severity guidance
 
 Use these priorities when deciding what to flag:
