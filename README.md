@@ -148,14 +148,16 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 
 ## Documentation
 
-- [Template Overview](docs/README.md):
+- [Template Overview](docs/README.md)
   - [Template Customization](docs/template-custom.md)
   - [Build Commands](docs/build-commands.md)
   - [Security Model](docs/security-model.md)
   - [Github Actions CI/CD](docs/github-ci.md)
-  - [Release and Packaging](docs/release-and-packaging.md)
-  - [Dependency Updates](docs/dependency-updates.md)
+    - [Release and Packaging](docs/release-and-packaging.md)
+    - [Dependency Updates](docs/dependency-updates.md)
   - [AI Agent Support](docs/ai-agent-support.md)
+  - [Terraform Support](docs/terraform.md)
+  - [Kubernetes Support](docs/k8s.md)
 
 ---
 
