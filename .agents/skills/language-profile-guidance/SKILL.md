@@ -31,7 +31,7 @@ Use this skill when adding or revising optional language-specific guidance for d
 - Prefer documentation and examples over hard-coding specialized behavior into the base template.
 - Keep the public interface stable even when language-specific implementation details differ.
 - When adding language-specific checks, explain where they belong: template, docs, CI helper scripts, or derived repositories.
-- Use `template-adaptation` as the companion skill when language guidance changes the customization surface.
+- Use `repo-adaptation` as the companion skill when language guidance changes the customization surface.
 
 ## Guidance areas
 - Go: formatting, vetting, tests, vulnerability checks

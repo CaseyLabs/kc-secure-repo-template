@@ -14,7 +14,7 @@ Runtime shape:
 - the infra image keeps a Debian-based nonroot runtime layer
 - the image copies in `terraform` from the selected Terraform Docker Hub image
 - the root workflow is implemented by
-  [`scripts/infra.sh`](../../scripts/infra.sh)
+  [`scripts/infra.sh`](../scripts/infra.sh)
 
 Usage:
 

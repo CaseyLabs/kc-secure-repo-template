@@ -34,7 +34,7 @@ Use this skill when working on release and artifact integrity for this template.
 - Keep generated artifacts and caches out of the Docker build context where appropriate.
 - Document any weakening of defaults explicitly.
 - Keep guidance clear about what evidence a derived repository should produce and why.
-- Pair this skill with `template-validation` when release changes require `make dist`, workflow checks, or packaging-manifest validation.
+- Pair this skill with `workflow-validation` when release changes require `make dist`, workflow checks, or packaging-manifest validation.
 
 ## Review priorities
 - supply-chain risk

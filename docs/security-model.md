@@ -74,5 +74,5 @@ or a protected automation environment, not from tracked files.
   guidance.
 - [`docs/release-and-packaging.md`](release-and-packaging.md): release artifact
   and integrity output details.
-- [`config/infra/README.md`](../config/infra/README.md): Terraform-backed GitHub
+- [`docs/terraform.md`](../docs/terraform.md): Terraform-backed GitHub
   hardening workspace.

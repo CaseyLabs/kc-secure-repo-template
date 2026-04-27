@@ -37,7 +37,7 @@ root targets.
 
 ## Documentation
 
-Update `config/k8s/README.md` when chart behavior, adaptation points,
+Update `docs/k8s.md` when chart behavior, adaptation points,
 validation commands, values, or security expectations change.
 
 Avoid expanding the root `README.md` unless the root workflow or public command

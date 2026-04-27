@@ -1,5 +1,5 @@
 ---
-name: template-infra-hardening
+name: terraform-hardening
 description: Use when changing or reviewing the Terraform-backed GitHub repository hardening workspace under config/infra, including provider pins, rulesets, default branch protection, required checks, secret scanning, Dependabot security updates, token handling, plan/apply behavior, and infra documentation. Do not use for ordinary app code, generic release integrity, generic template adaptation, or non-infra GitHub Actions changes unless they directly affect hardening expectations.
 ---
 
@@ -17,7 +17,7 @@ Use this skill when working on the Terraform-backed GitHub repository hardening 
 ## Do not use this skill when
 - the task is ordinary application code, release integrity, or generic template adaptation
 - the task is only GitHub Actions workflow implementation with no infra hardening impact
-- the task is only validating existing behavior; use `template-validation`
+- the task is only validating existing behavior; use `workflow-validation`
 - the task is only general GitHub hardening documentation with no Terraform workspace change; use `github-hardening`
 
 ## Goals
@@ -33,7 +33,7 @@ Use this skill when working on the Terraform-backed GitHub repository hardening 
 - Keep required status checks aligned with real workflow job names, especially `build`, `test`, and `scan`.
 - Keep secrets and tokens out of Terraform files, examples, plans, logs, and documentation.
 - Prefer explicit variables and reviewed defaults over hidden fallbacks.
-- Pair with `template-validation` when changes require `make infra`, workflow alignment, or packaging-manifest checks.
+- Pair with `workflow-validation` when changes require `make infra`, workflow alignment, or packaging-manifest checks.
 
 ## Review priorities
 - GitHub token exposure or overbroad token expectations
