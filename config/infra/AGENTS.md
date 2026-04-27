@@ -38,7 +38,7 @@ though that script lives outside this subtree.
 
 ## Documentation
 
-Update `config/infra/README.md` when Terraform behavior, variables, provider
+Update `docs/terraform.md` when Terraform behavior, variables, provider
 expectations, token handling, plan/apply behavior, or GitHub-side control
 coverage changes.
 

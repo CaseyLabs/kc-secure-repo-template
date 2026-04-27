@@ -1,4 +1,4 @@
-# Template Adoption Guide
+# Repo Template Customization Guide
 
 This repository is a starting point for a new project, not an application
 framework. The intended path is to keep the secure workflow shape, then replace
@@ -46,9 +46,9 @@ between local and GitHub Actions behavior.
 ## Optional Areas
 
 - Kubernetes support lives under `config/k8s/`; see
-  [`config/k8s/README.md`](../config/k8s/README.md).
+  [`docs/k8s.md`](../docs/k8s.md).
 - Terraform-backed GitHub repository hardening lives under `config/infra/`; see
-  [`config/infra/README.md`](../config/infra/README.md).
+  [`docs/terraform.md`](../docs/terraform.md).
 - GitHub workflow and repository-control guidance lives in
   [`docs/github-ci.md`](github-ci.md).
 

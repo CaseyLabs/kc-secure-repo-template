@@ -149,7 +149,7 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 ## Documentation
 
 - [Template Overview](docs/README.md)
-  - [Template Customization](docs/template-custom.md)
+  - [Customize Template](docs/customize-template.md)
   - [Build Commands](docs/build-commands.md)
   - [Security Model](docs/security-model.md)
   - [Github Actions CI/CD](docs/github-ci.md)

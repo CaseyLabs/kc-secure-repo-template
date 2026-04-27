@@ -1,6 +1,6 @@
 ---
 name: github-hardening
-description: Use when updating or reviewing GitHub-side hardening guidance for derived repositories, including required settings, rulesets, scanning, review protections, and workflow permissions. Use template-infra-hardening instead for Terraform-backed changes under config/infra. Do not use for ordinary in-repo implementation changes unless the task is primarily about documented GitHub controls.
+description: Use when updating or reviewing GitHub-side hardening guidance for derived repositories, including required settings, rulesets, scanning, review protections, and workflow permissions. Use terraform-hardening instead for Terraform-backed changes under config/infra. Do not use for ordinary in-repo implementation changes unless the task is primarily about documented GitHub controls.
 ---
 
 # GitHub hardening
@@ -17,7 +17,7 @@ Use this skill when working on GitHub-side hardening guidance for this template 
 - the task is primarily an in-repo code or script change
 - the task is primarily release-integrity design
 - the task is primarily template adaptation
-- the task is primarily Terraform-backed GitHub repository hardening under `config/infra`; use `template-infra-hardening`
+- the task is primarily Terraform-backed GitHub repository hardening under `config/infra`; use `terraform-hardening`
 - the task only needs ordinary workflow validation
 
 ## Goals
@@ -27,7 +27,7 @@ Use this skill when working on GitHub-side hardening guidance for this template 
 
 ## Method
 - Distinguish clearly between controls enforced in git, CI, Docker, and manual GitHub configuration.
-- Treat `config/infra` as the concrete implementation example when reviewing GitHub-side guidance, but use `template-infra-hardening` for direct infra edits.
+- Treat `config/infra` as the concrete implementation example when reviewing GitHub-side guidance, but use `terraform-hardening` for direct infra edits.
 - Prefer minimal GitHub workflow permissions.
 - Treat release-related GitHub workflows as sensitive and difficult to bypass.
 - Keep required repository settings documented when they cannot be enforced in-repo.

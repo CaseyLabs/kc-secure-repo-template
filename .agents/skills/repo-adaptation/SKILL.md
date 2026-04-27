@@ -1,17 +1,15 @@
 ---
 name: repo-adaptation
-description: Use when adapting this secure repository template or a forked repository to a real project, including inserted source code under src/, language and framework needs, dependencies, runtime behavior, Docker, Makefile targets, and customization surfaces. Do not use for routine bug fixes, small refactors, pure workflow validation, GitHub-settings-only work, or release-integrity-only work.
+description: Use when adapting or customizing this repository to meet the needs of the source code under `src/`, including language and framework needs, dependencies, runtime behavior, Docker, Makefile targets, and customization surfaces. Do not use for routine bug fixes, small refactors, pure workflow validation, GitHub-settings-only work, or release-integrity-only work.
 ---
 
 # Repo adaptation
 
-Use this skill when adapting this repository template or a forked repository to a real project.
+Use this skill when adapting or customizing this repository to meet the needs of the source code under `src/`.
 
 ## Use this skill when
-- initializing a new derived repository from this template
-- adapting a forked repository after a project codebase has been inserted
 - inspecting `src/` to identify the project language, framework, dependency, runtime, build, test, Docker, and Makefile needs
-- adapting the repository for a Go, Node.js, SQL, or small polyglot project
+- adapting the repository for a new Go, Node.js, SQL, or small polyglot project
 - changing `config/project.cfg`, `Dockerfile`, `Makefile`, `scripts/`, or default project scaffolding
 - changing the default customization surface for derived repositories
 
@@ -27,7 +25,6 @@ Use this skill when adapting this repository template or a forked repository to 
 - Preserve the stable public interface unless there is a strong reason to change it.
 - Keep the repository container-first, reproducible, and easy to review.
 - Keep fork-specific behavior explicit and reviewable.
-- Avoid introducing product-specific assumptions into the generic template unless the repository is being intentionally adapted for that product.
 
 ## Method
 - Treat `Makefile` as the primary user-facing interface.
@@ -40,8 +37,7 @@ Use this skill when adapting this repository template or a forked repository to 
   - identify Docker image, port, volume, and environment-variable needs
   - identify whether root `Makefile` targets should call existing project commands or add thin wrappers
 - Keep changes small and reviewable.
-- Prefer optional language-specific extensions in the base template, and project-specific wiring in adapted forks.
-- For Terraform-backed GitHub hardening changes under `config/infra`, use `template-infra-hardening` instead.
+- For Terraform-backed GitHub hardening changes under `config/infra`, use `terraform-hardening` instead.
 - If a change weakens security, reproducibility, or reviewability, document the reason explicitly.
 - Update documentation when the customization surface, workflow, or security posture changes.
 

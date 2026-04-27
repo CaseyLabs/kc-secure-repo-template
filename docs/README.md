@@ -4,7 +4,7 @@
 
 | Section                                                      | Description                                                                |
 |--------------------------------------------------------------|----------------------------------------------------------------------------|
-| [Template Customization](template-custom.md)                 | How to turn this template into a real derived repository.                  |
+| [Customize Template](customize-template.md)                 | How to turn this template into a real derived repository.                  |
 | [Project Build Commands](build-commands.md)                  | What each `make` target does, and why local and CI commands stay aligned.  |
 | [Security Model](security-model.md)                          | Security posture, rationale, and control boundaries.                       |
 | [GitHub Configuration](github-ci.md)                         | GitHub Actions, workflow policy, credentials, and repo configuration.      |
