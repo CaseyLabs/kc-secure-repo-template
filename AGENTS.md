@@ -45,8 +45,8 @@ Use a repo-local skill only when a matching skill actually exists in `.agents/sk
 
 Typical routing:
 
-- Use `template-adaptation` when adapting this template to a new project or revising customization points.
-- Use `template-validation` when changing `Makefile`, `Dockerfile`, `scripts/`, tests, packaging manifests, CI, or release workflows.
+- Use `repo-adaptation` when adapting this template or a forked repository to a real project, inspecting inserted `src/` code, or revising customization points.
+- Use `workflow-validation` when changing `Makefile`, `Dockerfile`, `scripts/`, tests, packaging manifests, CI, or release workflows.
 - Use `github-hardening` when updating GitHub-side hardening guidance or required repository settings.
 - Use `template-infra-hardening` when changing or reviewing the Terraform-backed GitHub repository hardening workspace under `config/infra`.
 - Use `release-integrity` when working on SBOMs, attestations, artifact scanning, signing guidance, or release workflow safety.
@@ -121,7 +121,7 @@ When reviewing changes or using `/review`:
 - Avoid changing the root `README.md` unless it is factually wrong or behavior has changed; prefer focused subfolder `README.md` files for new detail.
 - When the same mistake, review comment, or workflow confusion appears more than once, propose a targeted update to `AGENTS.md` or the relevant `.agents/skills/*/SKILL.md`, and prompt the user if they want the update made.
 - Add or update a subtree `AGENTS.md` when that subtree has real local rules, hazards, or verification needs.
-- Add code comments for non-obvious workflow, security, reproducibility, or template-adaptation decisions; be generous with your code comments, and assume the user is new to the tooling or frameworks.
+- Add code comments for non-obvious workflow, security, reproducibility, or repo-adaptation decisions; be generous with your code comments, and assume the user is new to the tooling or frameworks.
 
 ## Definition of done
 

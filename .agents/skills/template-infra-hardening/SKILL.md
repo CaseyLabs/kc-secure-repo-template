@@ -17,7 +17,7 @@ Use this skill when working on the Terraform-backed GitHub repository hardening 
 ## Do not use this skill when
 - the task is ordinary application code, release integrity, or generic template adaptation
 - the task is only GitHub Actions workflow implementation with no infra hardening impact
-- the task is only validating existing behavior; use `template-validation`
+- the task is only validating existing behavior; use `workflow-validation`
 - the task is only general GitHub hardening documentation with no Terraform workspace change; use `github-hardening`
 
 ## Goals
@@ -33,7 +33,7 @@ Use this skill when working on the Terraform-backed GitHub repository hardening 
 - Keep required status checks aligned with real workflow job names, especially `build`, `test`, and `scan`.
 - Keep secrets and tokens out of Terraform files, examples, plans, logs, and documentation.
 - Prefer explicit variables and reviewed defaults over hidden fallbacks.
-- Pair with `template-validation` when changes require `make infra`, workflow alignment, or packaging-manifest checks.
+- Pair with `workflow-validation` when changes require `make infra`, workflow alignment, or packaging-manifest checks.
 
 ## Review priorities
 - GitHub token exposure or overbroad token expectations
