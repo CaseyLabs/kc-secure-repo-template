@@ -114,6 +114,15 @@ check_workflow_action_pins() {
 	done
 }
 
+check_workflow_permissions_policy() {
+	for workflow in .github/workflows/*.yml; do
+		if ! grep -Eq '^permissions:[[:space:]]*($|[{])' "${workflow}"; then
+			printf '%s: missing top-level permissions block; set explicit workflow permissions\n' "${workflow}" >&2
+			return 1
+		fi
+	done
+}
+
 check_workflow_trigger_policy() {
 	awk '
 		{
@@ -123,11 +132,57 @@ check_workflow_trigger_policy() {
 				printf "%s:%d: pull_request_target is not allowed in template workflows\n", FILENAME, FNR
 				found = 1
 			}
+			if (line ~ /(^|[^A-Za-z0-9_-])issue_comment([^A-Za-z0-9_-]|$)/) {
+				printf "%s:%d: issue_comment is not allowed in template workflows\n", FILENAME, FNR
+				found = 1
+			}
+			if (line ~ /(^|[^A-Za-z0-9_-])workflow_run([^A-Za-z0-9_-]|$)/) {
+				printf "%s:%d: workflow_run requires a dedicated reviewed policy exception\n", FILENAME, FNR
+				found = 1
+			}
 		}
 		END {
 			exit found ? 1 : 0
 		}
 	' .github/workflows/*.yml
+}
+
+check_workflow_metadata_policy() {
+	for workflow in .github/workflows/*.yml; do
+		awk '
+			function is_untrusted_metadata(line) {
+				return line ~ /\$\{\{[^}]*github\.event\.(issue|comment)\./ ||
+					line ~ /\$\{\{[^}]*github\.event\.pull_request\.(title|body|head_ref|head\.ref|head\.label)/ ||
+					line ~ /\$\{\{[^}]*github\.event\.workflow_run\./ ||
+					line ~ /\$\{\{[^}]*github\.head_ref/
+			}
+			{
+				line = $0
+				sub(/[[:space:]]+#.*$/, "", line)
+				indent = match($0, /[^ ]/) ? RSTART - 1 : 0
+				if (in_run && indent <= run_indent && line !~ /^[[:space:]]*$/) {
+					in_run = 0
+				}
+				if (in_run && is_untrusted_metadata(line)) {
+					printf "%s:%d: untrusted github.event metadata must not be interpolated directly into run steps\n", FILENAME, FNR
+					found = 1
+				}
+				if (line ~ /^[[:space:]]*(-[[:space:]]*)?run:[[:space:]]*/) {
+					run_indent = indent
+					if (is_untrusted_metadata(line)) {
+						printf "%s:%d: untrusted github.event metadata must not be interpolated directly into run steps\n", FILENAME, FNR
+						found = 1
+					}
+					if (line ~ /^[[:space:]]*(-[[:space:]]*)?run:[[:space:]]*[>|]/) {
+						in_run = 1
+					}
+				}
+			}
+			END {
+				exit found ? 1 : 0
+			}
+		' "${workflow}" || return 1
+	done
 }
 
 # Nested `dist/` directories are usually an accidental packaging bug.
@@ -159,6 +214,119 @@ EOF
 			fail 'workflow trigger policy should reject pull_request_target'
 		fi
 		grep -q 'pull_request_target is not allowed' /tmp/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report pull_request_target'
+	)
+	rm -rf "${workdir}"
+}
+
+test_workflow_issue_comment_is_rejected() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		cat >.github/workflows/unsafe.yml <<'EOF'
+name: unsafe
+on:
+  issue_comment:
+    types:
+      - created
+permissions:
+  contents: read
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
+		if check_workflow_trigger_policy >/tmp/template-workflow-trigger-policy.txt 2>&1; then
+			fail 'workflow trigger policy should reject issue_comment'
+		fi
+		grep -q 'issue_comment is not allowed' /tmp/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report issue_comment'
+	)
+	rm -rf "${workdir}"
+}
+
+test_workflow_run_is_rejected_without_policy_exception() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		cat >.github/workflows/unsafe.yml <<'EOF'
+name: unsafe
+on:
+  workflow_run:
+    workflows:
+      - test.yml
+    types:
+      - completed
+permissions:
+  contents: write
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
+		if check_workflow_trigger_policy >/tmp/template-workflow-trigger-policy.txt 2>&1; then
+			fail 'workflow trigger policy should reject workflow_run'
+		fi
+		grep -q 'workflow_run requires a dedicated reviewed policy exception' /tmp/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report workflow_run'
+	)
+	rm -rf "${workdir}"
+}
+
+test_workflow_missing_permissions_is_rejected() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		cat >.github/workflows/unsafe.yml <<'EOF'
+name: unsafe
+on:
+  pull_request:
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
+		if check_workflow_permissions_policy >/tmp/template-workflow-permissions-policy.txt 2>&1; then
+			fail 'workflow permissions policy should reject missing permissions'
+		fi
+		grep -q 'missing top-level permissions block' /tmp/template-workflow-permissions-policy.txt || fail 'workflow permissions policy should report missing permissions'
+	)
+	rm -rf "${workdir}"
+}
+
+test_workflow_metadata_interpolation_is_rejected() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		tar -C "${root_dir}" -cf - . | tar -xf -
+		cat >.github/workflows/unsafe.yml <<'EOF'
+name: unsafe
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo "${{ github.event.pull_request.title }}"
+EOF
+		if check_workflow_metadata_policy >/tmp/template-workflow-metadata-policy.txt 2>&1; then
+			fail 'workflow metadata policy should reject unsafe run interpolation'
+		fi
+		grep -q 'untrusted github.event metadata must not be interpolated directly into run steps' /tmp/template-workflow-metadata-policy.txt || fail 'workflow metadata policy should report unsafe metadata interpolation'
 	)
 	rm -rf "${workdir}"
 }
@@ -202,6 +370,7 @@ EOF
 			-e "s#^DEV_TERRAFORM_IMAGE=.*#DEV_TERRAFORM_IMAGE='${DEV_TERRAFORM_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_GITLEAKS_IMAGE=.*#DEV_SCAN_GITLEAKS_IMAGE='${DEV_SCAN_GITLEAKS_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_ACTIONLINT_IMAGE=.*#DEV_SCAN_ACTIONLINT_IMAGE='${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_ZIZMOR_IMAGE=.*#DEV_SCAN_ZIZMOR_IMAGE='${DEV_SCAN_ZIZMOR_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_TRIVY_IMAGE=.*#DEV_SCAN_TRIVY_IMAGE='${DEV_SCAN_TRIVY_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_SYFT_IMAGE=.*#DEV_SCAN_SYFT_IMAGE='${DEV_SCAN_SYFT_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_GRYPE_IMAGE=.*#DEV_SCAN_GRYPE_IMAGE='${DEV_SCAN_GRYPE_IMAGE_LOCK}'#" \
@@ -817,9 +986,15 @@ template)
 	! grep -qx 'config/project.cfg' .dockerignore || fail '.dockerignore should not exclude tracked config/project.cfg'
 	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
 	check_workflow_action_pins
+	check_workflow_permissions_policy
 	check_workflow_trigger_policy
+	check_workflow_metadata_policy
 	assert_no_nested_dist_dirs
 	test_workflow_pull_request_target_is_rejected
+	test_workflow_issue_comment_is_rejected
+	test_workflow_run_is_rejected_without_policy_exception
+	test_workflow_missing_permissions_is_rejected
+	test_workflow_metadata_interpolation_is_rejected
 	test_local_state_is_not_packaged
 	test_optional_k8s_update_compat
 	test_optional_k8s_scan_skip
@@ -832,6 +1007,7 @@ template)
 	PROJECT_CFG_FILE=config/project.cfg make example >/tmp/template-example.txt
 	[ ! -d dist ] || fail 'make example should not create root dist'
 	grep -q 'Run secret scan' /tmp/template-example.txt || fail 'make example should run the security scan'
+	grep -q 'Run GitHub Actions security scan' /tmp/template-example.txt || fail 'make example should run the GitHub Actions security scan'
 	assert_no_nested_dist_dirs
 	rm -rf .tmp
 	# Infra validation should also avoid writing release outputs.

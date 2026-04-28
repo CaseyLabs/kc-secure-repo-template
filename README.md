@@ -223,3 +223,4 @@ This project uses the following open-source tools as part of its security scanni
 - [grype](https://github.com/anchore/grype): scans the generated SBOM for known vulnerabilities during release builds.
 - [syft](https://github.com/anchore/syft): generates SBOM output for release artifacts.
 - [trivy](https://github.com/aquasecurity/trivy): scans for Dockerfile misconfigurations in the repository.
+- [zizmor](https://github.com/zizmorcore/zizmor): scans GitHub Actions workflows for security footguns.

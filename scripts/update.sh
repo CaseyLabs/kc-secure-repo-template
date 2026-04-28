@@ -160,6 +160,7 @@ if [ -n "${DEV_K8S_KUBECTL_IMAGE:-}" ]; then
 fi
 dev_scan_gitleaks_image_lock=$(resolve_image "${DEV_SCAN_GITLEAKS_IMAGE}")
 dev_scan_actionlint_image_lock=$(resolve_image "${DEV_SCAN_ACTIONLINT_IMAGE}")
+dev_scan_zizmor_image_lock=$(resolve_image "${DEV_SCAN_ZIZMOR_IMAGE}")
 dev_scan_trivy_image_lock=$(resolve_image "${DEV_SCAN_TRIVY_IMAGE}")
 dev_scan_syft_image_lock=$(resolve_image "${DEV_SCAN_SYFT_IMAGE}")
 dev_scan_grype_image_lock=$(resolve_image "${DEV_SCAN_GRYPE_IMAGE}")
@@ -178,6 +179,7 @@ DEV_K8S_HELM_IMAGE_LOCK='${dev_k8s_helm_image_lock}'
 DEV_K8S_KUBECTL_IMAGE_LOCK='${dev_k8s_kubectl_image_lock}'
 DEV_SCAN_GITLEAKS_IMAGE_LOCK='${dev_scan_gitleaks_image_lock}'
 DEV_SCAN_ACTIONLINT_IMAGE_LOCK='${dev_scan_actionlint_image_lock}'
+DEV_SCAN_ZIZMOR_IMAGE_LOCK='${dev_scan_zizmor_image_lock}'
 DEV_SCAN_TRIVY_IMAGE_LOCK='${dev_scan_trivy_image_lock}'
 DEV_SCAN_SYFT_IMAGE_LOCK='${dev_scan_syft_image_lock}'
 DEV_SCAN_GRYPE_IMAGE_LOCK='${dev_scan_grype_image_lock}'
