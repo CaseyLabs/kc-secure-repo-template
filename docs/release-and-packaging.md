@@ -32,7 +32,12 @@ for the Grype scan and defaults to `critical`.
 
 ## GitHub Release Behavior
 
-The release workflow runs on `v*` tags. Before publishing, it:
+The release workflow is the only supported publisher for versioned GitHub
+Releases. To publish a release, create the reviewed `v*` tag and push the tag to
+GitHub. Do not create the GitHub Release manually first; an existing release for
+the same tag blocks the workflow from attaching generated integrity assets.
+
+Before publishing, the workflow:
 
 - verifies the tag commit is reachable from the repository default branch
 - runs `make test`
