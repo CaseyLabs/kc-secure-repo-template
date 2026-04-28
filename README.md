@@ -153,6 +153,7 @@ make infra    # build/test/plan Terraform config from `./config/infra`
   - [Build Commands](docs/build-commands.md)
   - [Security Model](docs/security-model.md)
   - [Github Actions CI/CD](docs/github-ci.md)
+  - [GitOps Naming Conventions](docs/gitops-conventions.md)
     - [Release and Packaging](docs/release-and-packaging.md)
     - [Dependency Updates](docs/dependency-updates.md)
   - [AI Agent Support](docs/ai-agent-support.md)
