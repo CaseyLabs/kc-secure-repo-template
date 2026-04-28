@@ -49,8 +49,13 @@ container-first, pinned, scanned, and reviewable.
 
 - Pull request code stays untrusted:
   - PR checks use `pull_request`.
-  - `make scan` rejects `pull_request_target` in checked-in workflows.
-  - workflows use minimal permissions.
+  - `make scan` rejects privileged triggers such as `pull_request_target`,
+    `issue_comment`, and unreviewed `workflow_run` handoffs.
+  - workflows use explicit minimal permissions.
+- Workflow definitions get security-audited:
+  - `actionlint` checks syntax and expression mistakes.
+  - `zizmor` checks GitHub Actions security footguns.
+  - repo policy checks enforce template-specific hard fails.
 - Workflow dependencies stay pinned:
   - external Actions use full commit SHAs.
   - `make scan` enforces those pins.
@@ -79,9 +84,31 @@ container-first, pinned, scanned, and reviewable.
   - no checkout of PR head code
   - no build/test of PR contents
   - no package or release from PR contents
+- Do not use `issue_comment` for automation that can write, publish, dispatch,
+  or run shell from user-controlled text.
 - Keep privileged PR metadata automation separate:
   - prefer `workflow_run` handoff patterns when needed
   - treat artifacts from PR code as untrusted
+  - add a reviewed policy exception before committing `workflow_run`
+
+## Workflow Permissions
+
+- Every checked-in workflow must declare a top-level `permissions:` block.
+- Grant only the scopes needed by that workflow.
+- Keep PR validation and scan workflows read-only.
+- Restrict write, attestation, and OIDC permissions to release or maintenance
+  workflows that require them.
+
+## Untrusted Input
+
+- Treat all event data as untrusted shell input:
+  - PR titles
+  - branch names
+  - issue and PR comments
+  - any `github.event.*` field
+- Do not interpolate those values directly into `run:` steps.
+- Prefer explicit allowlists, fixed strings, or separate metadata-only steps
+  when a workflow needs to inspect event content.
 
 ## Credentials
 

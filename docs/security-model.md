@@ -14,11 +14,14 @@ organization controls.
   digest in `config/lockfile.cfg`.
 - GitHub Actions are pinned by full commit SHA and keep a reviewed release tag
   comment beside each external action reference.
-- `make scan` runs secret scanning, workflow linting, Dockerfile
-  misconfiguration scanning, Kubernetes manifest scanning when configured, and
-  workflow policy checks.
+- `make scan` runs secret scanning, workflow linting, GitHub Actions security
+  analysis, Dockerfile misconfiguration scanning, Kubernetes manifest scanning
+  when configured, and workflow policy checks.
 - Release builds repeat tests and scans on the tagged commit, reject tags outside
   default-branch history, and refuse to modify an existing GitHub Release.
+- Workflows that request `id-token: write` still follow the same SHA-pinning
+  rule for external Actions, because trusted publishing makes workflow
+  integrity part of the release trust boundary.
 - Release outputs can include checksums, an SBOM, a vulnerability report, and
   GitHub artifact attestations.
 
@@ -29,7 +32,12 @@ organization controls.
 - Digest locks protect runtime scripts from mutable image tags after a version
   selector is reviewed.
 - `pull_request` workflows treat contributor code as untrusted; the template
-  rejects checked-in use of `pull_request_target` for default CI paths.
+  rejects checked-in use of privileged triggers such as `pull_request_target`,
+  `issue_comment`, and unreviewed `workflow_run` handoffs.
+- Explicit workflow `permissions:` blocks prevent GitHub's repository defaults
+  from silently broadening the `GITHUB_TOKEN` scope.
+- Metadata interpolation checks reduce the risk that PR titles, comments,
+  branch names, or other actor-controlled event fields become shell script.
 - Repeating tests and scans during release protects against tags that are created
   after pull request checks have completed.
 - Nonroot containers and dropped capabilities reduce the blast radius of build
@@ -39,7 +47,8 @@ organization controls.
 
 Some protections are enforced by files in this repository:
 
-- workflow trigger policy and action pinning in `make scan`
+- workflow trigger, permissions, metadata, and action pinning policy in
+  `make scan`
 - pinned image locks in `config/lockfile.cfg`
 - release tag ancestry checks in `.github/workflows/build.yml`
 - release artifact generation in `scripts/dist.sh`
