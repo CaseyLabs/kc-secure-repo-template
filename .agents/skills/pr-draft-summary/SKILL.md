@@ -21,7 +21,8 @@ Use repository evidence first. Good inputs include `git status --short --branch`
 
 ## PR content rules
 
-- Keep the title imperative or conventional-commit style when that fits the branch.
+- Format the title as `[<type>] <scope>: <imperative summary>` unless the user
+  asks for a different repository convention.
 - Keep the body short, grouped, and easy to scan.
 - Explain why the change exists when the motivation is not obvious from the file list.
 - Preserve important review reasoning, especially security, reproducibility, release, or template-boundary tradeoffs.

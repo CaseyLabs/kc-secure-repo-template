@@ -38,6 +38,8 @@ Workflow rules:
 - Call `make` targets instead of duplicating project logic inline.
 - Pin external GitHub Actions by full commit SHA.
 - Keep the reviewed release tag comment beside each pinned action.
+- Follow [`docs/gitops-conventions.md`](gitops-conventions.md) for branch, PR,
+  issue, label, commit, and release naming.
 
 ## Supply Chain Hardening
 

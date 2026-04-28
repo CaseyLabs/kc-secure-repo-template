@@ -73,6 +73,7 @@ If no matching skill exists, follow this file and the repository itself.
 - `.agents/code_review.md` contains the detailed `/review` checklist; keep `AGENTS.md` focused on durable operating rules.
 - `.agents/skills/*/SKILL.md` contains task-specific agent workflows; keep skill routing in this file aligned with the actual local skills.
 - `config/infra/` and `config/k8s/` have subtree `AGENTS.md` files with local hazards and verification rules.
+- `docs/gitops-conventions.md` defines branch, PR, issue, label, commit, and release naming conventions.
 - Keep template packaging and release manifests aligned.
 - Follow the repository's existing structure, naming, and style.
 - Do not introduce new dependencies unless necessary and justified.
