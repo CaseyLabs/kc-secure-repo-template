@@ -25,6 +25,10 @@ case "${PROJECT_NAME}" in
 *) src_name=${PROJECT_NAME}-example ;;
 esac
 src_image="${src_name}:local"
+project_dockerfile=${PROJECT_DOCKERFILE:-Dockerfile}
+project_build_target=${PROJECT_BUILD_TARGET:-dev}
+project_build_command=${PROJECT_BUILD_COMMAND:-'cd src && go build -trimpath -buildvcs=false ./cmd/app'}
+dev_base_build_image=${DEV_GO_IMAGE_LOCK:-${DEV_GO_IMAGE:-${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE:-}}}}
 
 # Match container file ownership to the current host user so generated files stay editable.
 docker_uid=${DOCKER_UID:-$(id -u)}
@@ -41,20 +45,32 @@ if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
 	# shellcheck disable=SC2086
 	docker buildx build --load \
 		${DOCKER_BUILD_EXTRA_ARGS} \
-		--build-arg DEV_BASE_IMAGE="${DEV_GO_IMAGE_LOCK}" \
+		--build-arg DEV_BASE_IMAGE="${dev_base_build_image}" \
+		--build-arg DEV_GO_IMAGE="${DEV_GO_IMAGE_LOCK:-${DEV_GO_IMAGE:-}}" \
+		--build-arg DEV_PYTHON_IMAGE="${DEV_PYTHON_IMAGE_LOCK:-${DEV_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_NODE_IMAGE="${DEV_NODE_IMAGE_LOCK:-${DEV_NODE_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_STATIC_IMAGE="${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-${DEV_DISTROLESS_STATIC_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_PYTHON_IMAGE="${DEV_DISTROLESS_PYTHON_IMAGE_LOCK:-${DEV_DISTROLESS_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_NODE_IMAGE="${DEV_DISTROLESS_NODE_IMAGE_LOCK:-${DEV_DISTROLESS_NODE_IMAGE:-}}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-		--target dev \
-		-f Dockerfile \
+		--target "${project_build_target}" \
+		-f "${project_dockerfile}" \
 		-t "${src_image}" .
 else
 	# Build the Go example image first; later steps run inside this container.
 	docker build \
-		--build-arg DEV_BASE_IMAGE="${DEV_GO_IMAGE_LOCK}" \
+		--build-arg DEV_BASE_IMAGE="${dev_base_build_image}" \
+		--build-arg DEV_GO_IMAGE="${DEV_GO_IMAGE_LOCK:-${DEV_GO_IMAGE:-}}" \
+		--build-arg DEV_PYTHON_IMAGE="${DEV_PYTHON_IMAGE_LOCK:-${DEV_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_NODE_IMAGE="${DEV_NODE_IMAGE_LOCK:-${DEV_NODE_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_STATIC_IMAGE="${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-${DEV_DISTROLESS_STATIC_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_PYTHON_IMAGE="${DEV_DISTROLESS_PYTHON_IMAGE_LOCK:-${DEV_DISTROLESS_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_NODE_IMAGE="${DEV_DISTROLESS_NODE_IMAGE_LOCK:-${DEV_DISTROLESS_NODE_IMAGE:-}}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-		--target dev \
-		-f Dockerfile \
+		--target "${project_build_target}" \
+		-f "${project_dockerfile}" \
 		-t "${src_image}" .
 fi
 
@@ -70,11 +86,13 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${src_image}" \
-	sh -eu -c 'cd src && go build -trimpath -buildvcs=false ./cmd/app'
+	sh -eu -c "${project_build_command}"
 
 printf '\n==> Build summary\n'
 # Print a short recap so users can see which image and config were used.
 printf '%s\n' "Image: ${src_image}"
 printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"
 printf '%s\n' 'Workspace: src'
+printf '%s\n' "Dockerfile: ${project_dockerfile}"
+printf '%s\n' "Build target: ${project_build_target}"
 printf '%s\n' 'Result: build passed'

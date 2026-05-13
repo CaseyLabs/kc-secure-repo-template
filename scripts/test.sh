@@ -1,5 +1,5 @@
 #!/bin/sh
-# shellcheck shell=sh disable=SC1090
+# shellcheck shell=sh disable=SC1090,SC1091,SC2016
 set -eu
 
 # Default to testing the bundled `src/` example, but allow broader validation modes.
@@ -918,6 +918,8 @@ src)
 	*) src_name=${PROJECT_NAME}-example ;;
 	esac
 	src_image="${src_name}:local"
+	project_lint_command=${PROJECT_LINT_COMMAND:-'cd src && test -z "$(gofmt -l .)" && go vet ./...'}
+	project_test_command=${PROJECT_TEST_COMMAND:-'cd src && go test -v ./... && go build -trimpath -buildvcs=false ./cmd/app'}
 
 	# Build the image on demand if the user runs tests from a clean checkout.
 	if ! docker image inspect "${src_image}" >/dev/null 2>&1; then
@@ -945,7 +947,7 @@ src)
 		-v "$(pwd):/workspace" \
 		-w /workspace \
 		"${src_image}" \
-		sh -eu -c 'cd src && test -z "$(gofmt -l .)" && go vet ./...'
+		sh -eu -c "${project_lint_command}"
 
 	printf '\n==> Test and build src workspace\n'
 	# Run the example unit tests and build in the same containerized environment.
@@ -959,7 +961,7 @@ src)
 		-v "$(pwd):/workspace" \
 		-w /workspace \
 		"${src_image}" \
-		sh -eu -c 'cd src && go test -v ./... && go build -trimpath -buildvcs=false ./cmd/app'
+		sh -eu -c "${project_test_command}"
 
 	printf '\n==> Test summary\n'
 	# Summaries make CI and local output easier to scan.
@@ -975,6 +977,16 @@ template)
 	done
 	[ ! -d scripts/lib ] || fail 'scripts/lib should not exist'
 	. ./config/lockfile.cfg
+	case "${DEV_PYTHON_IMAGE_LOCK}" in *@sha256:*) ;; *) fail 'DEV_PYTHON_IMAGE_LOCK should be pinned by digest' ;; esac
+	case "${DEV_NODE_IMAGE_LOCK}" in *@sha256:*) ;; *) fail 'DEV_NODE_IMAGE_LOCK should be pinned by digest' ;; esac
+	case "${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" in *@sha256:*) ;; *) fail 'DEV_DISTROLESS_STATIC_IMAGE_LOCK should be pinned by digest' ;; esac
+	case "${DEV_DISTROLESS_PYTHON_IMAGE_LOCK}" in *@sha256:*) ;; *) fail 'DEV_DISTROLESS_PYTHON_IMAGE_LOCK should be pinned by digest' ;; esac
+	case "${DEV_DISTROLESS_NODE_IMAGE_LOCK}" in *@sha256:*) ;; *) fail 'DEV_DISTROLESS_NODE_IMAGE_LOCK should be pinned by digest' ;; esac
+	for dockerfile in config/dockerfiles/Dockerfile.go config/dockerfiles/Dockerfile.python config/dockerfiles/Dockerfile.node; do
+		[ -f "${dockerfile}" ] || fail "${dockerfile} should exist"
+		grep -Eq '^(ENTRYPOINT|CMD) \[[^]]+\]$' "${dockerfile}" || fail "${dockerfile} should use exec-form runtime commands"
+		grep -q 'USER nonroot:nonroot' "${dockerfile}" || fail "${dockerfile} should run the runtime stage as nonroot"
+	done
 	make help >/tmp/template-help.txt
 	grep -q 'Available targets' /tmp/template-help.txt || fail 'make help output is missing the target list'
 	make -n build | grep -q 'sh scripts/build.sh "' || fail 'make build should call scripts/build.sh'

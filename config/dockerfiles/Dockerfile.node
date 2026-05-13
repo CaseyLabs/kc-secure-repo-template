@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+
+# Production Node.js application template:
+# - install/build in a Debian/Trixie Node image
+# - run the app in distroless Node.js as nonroot
+ARG DEV_NODE_IMAGE
+ARG DEV_DISTROLESS_NODE_IMAGE
+
+FROM ${DEV_NODE_IMAGE:-node:24.11.1-trixie-slim} AS dev
+
+WORKDIR /workspace
+COPY . .
+
+RUN cd src && \
+    if [ -f package-lock.json ]; then \
+        npm ci; \
+    elif [ -f package.json ]; then \
+        npm install; \
+    fi && \
+    if [ -f package.json ] && npm pkg get scripts.build 2>/dev/null | grep -qv '^{}$'; then \
+        npm run build; \
+    fi && \
+    if [ -f package.json ] && npm pkg get scripts.test 2>/dev/null | grep -qv '^{}$'; then \
+        npm test; \
+    fi && \
+    if [ -f package.json ]; then \
+        npm prune --omit=dev; \
+    fi
+
+FROM ${DEV_DISTROLESS_NODE_IMAGE:-gcr.io/distroless/nodejs24-debian13:nonroot} AS runtime
+
+WORKDIR /app
+COPY --from=dev /workspace/src ./
+USER nonroot:nonroot
+CMD ["server.js"]

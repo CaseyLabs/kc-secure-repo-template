@@ -19,6 +19,7 @@ case "${PROJECT_NAME}" in
 esac
 src_image="${src_name}:local"
 container_name="${src_name}-run"
+project_run_command=${PROJECT_RUN_COMMAND:-'cd src && go run ./cmd/app'}
 
 # Auto-build the image so `make run` works even if the user skipped `make build`.
 if ! docker image inspect "${src_image}" >/dev/null 2>&1; then
@@ -54,7 +55,7 @@ container_id=$(
 		-v "$(pwd):/workspace" \
 		-w /workspace \
 		"${src_image}" \
-		sh -eu -c 'cd src && go run ./cmd/app'
+		sh -eu -c "${project_run_command}"
 )
 
 printf '\n==> Run summary\n'

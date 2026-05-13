@@ -48,3 +48,21 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # Check optional language Dockerfile templates shipped with this repository.
+  - package-ecosystem: "docker"
+    directory: "/config/dockerfiles"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "[deps]"
+      include: "scope"
+    groups:
+      dockerfile-templates:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

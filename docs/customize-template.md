@@ -8,7 +8,8 @@ the bundled example with your real project code.
 
 - Choose a project name and image name in `config/project.cfg`.
 - Replace or extend the example under `src/`.
-- Update `Dockerfile` so the dev image contains the tools your project needs.
+- Update `Dockerfile` or select a template from `config/dockerfiles/` so the dev
+  image contains the tools your project needs.
 - Keep root commands in `Makefile` stable and put implementation details in
   `scripts/`.
 - Keep generated files, local credentials, build caches, and environment-specific
@@ -26,7 +27,8 @@ between local and GitHub Actions behavior.
 3. Replace the contents of `src/` with your project source.
 4. Identify how the project builds, tests, runs, and releases before changing
    root workflow files.
-5. Adjust `Dockerfile` for the project's build and test toolchain.
+5. Adjust `Dockerfile`, or select one of the templates in `config/dockerfiles/`,
+   for the project's build and test toolchain.
 6. Update `scripts/build.sh`, `scripts/test.sh`, and `scripts/run.sh` only as
    needed for the project.
 7. Run `make build`, `make test`, and `make scan`.
@@ -59,10 +61,14 @@ Actions; put durable behavior behind root `make` targets instead.
 - `config/project.cfg`
   - reviewed project name, image name, tool image selectors, and optional
     Kubernetes or Terraform defaults
-  - values that local scripts and CI should share
+  - selected Dockerfile path, build target, command hooks, and values that local
+    scripts and CI should share
 - `Dockerfile`
   - the container runtime and development tools needed for build, test, and run
   - deterministic package installation and nonroot runtime expectations
+- `config/dockerfiles/`
+  - optional Go, Python, and Node.js app templates with Debian builder stages
+    and distroless nonroot runtime stages
 - `scripts/`
   - implementation details for root `make` targets
   - project-specific build, test, run, release, scan, or update commands
@@ -111,6 +117,8 @@ agent guidance that described the removed area.
   release tag comment.
 - Tool container images should stay locked in `config/lockfile.cfg` through
   `make update`.
+- Optional language image selectors and distroless runtime selectors should stay
+  in `config/project.cfg` so Renovate and `make update` can keep them reviewable.
 - Sensitive values should stay in GitHub secrets, local environment variables,
   or ignored local files, not in tracked config or docs.
 

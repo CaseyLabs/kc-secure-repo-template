@@ -22,6 +22,7 @@ esac
 project_image=${PROJECT_IMAGE:-kc-secure-template-dev:local}
 project_dockerfile=${PROJECT_DOCKERFILE:-Dockerfile}
 project_build_target=${PROJECT_BUILD_TARGET:-dev}
+project_scan_image_target=${PROJECT_SCAN_IMAGE_TARGET:-runtime}
 
 # Match the container runtime user to the host user for bind-mounted files.
 docker_uid=${DOCKER_UID:-$(id -u)}
@@ -182,6 +183,12 @@ if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
 	docker buildx build --load \
 		${DOCKER_BUILD_EXTRA_ARGS} \
 		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
+		--build-arg DEV_GO_IMAGE="${DEV_GO_IMAGE_LOCK:-${DEV_GO_IMAGE:-}}" \
+		--build-arg DEV_PYTHON_IMAGE="${DEV_PYTHON_IMAGE_LOCK:-${DEV_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_NODE_IMAGE="${DEV_NODE_IMAGE_LOCK:-${DEV_NODE_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_STATIC_IMAGE="${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-${DEV_DISTROLESS_STATIC_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_PYTHON_IMAGE="${DEV_DISTROLESS_PYTHON_IMAGE_LOCK:-${DEV_DISTROLESS_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_NODE_IMAGE="${DEV_DISTROLESS_NODE_IMAGE_LOCK:-${DEV_DISTROLESS_NODE_IMAGE:-}}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--target "${project_build_target}" \
@@ -191,6 +198,12 @@ else
 	# Build the main dev image before running syntax and template checks inside it.
 	docker build \
 		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
+		--build-arg DEV_GO_IMAGE="${DEV_GO_IMAGE_LOCK:-${DEV_GO_IMAGE:-}}" \
+		--build-arg DEV_PYTHON_IMAGE="${DEV_PYTHON_IMAGE_LOCK:-${DEV_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_NODE_IMAGE="${DEV_NODE_IMAGE_LOCK:-${DEV_NODE_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_STATIC_IMAGE="${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-${DEV_DISTROLESS_STATIC_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_PYTHON_IMAGE="${DEV_DISTROLESS_PYTHON_IMAGE_LOCK:-${DEV_DISTROLESS_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_NODE_IMAGE="${DEV_DISTROLESS_NODE_IMAGE_LOCK:-${DEV_DISTROLESS_NODE_IMAGE:-}}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--target "${project_build_target}" \
@@ -355,6 +368,46 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--exit-code 1 \
 	--skip-version-check \
 	/workspace
+
+if [ "${PROJECT_SCAN_IMAGE_VULNS:-false}" = 'true' ]; then
+	printf '\n==> Run image vulnerability scan\n'
+	case "${project_image}" in
+	*:*) scan_image="${project_image}-vuln-scan" ;;
+	*) scan_image="${project_image}:vuln-scan" ;;
+	esac
+	docker build \
+		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
+		--build-arg DEV_GO_IMAGE="${DEV_GO_IMAGE_LOCK:-${DEV_GO_IMAGE:-}}" \
+		--build-arg DEV_PYTHON_IMAGE="${DEV_PYTHON_IMAGE_LOCK:-${DEV_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_NODE_IMAGE="${DEV_NODE_IMAGE_LOCK:-${DEV_NODE_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_STATIC_IMAGE="${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-${DEV_DISTROLESS_STATIC_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_PYTHON_IMAGE="${DEV_DISTROLESS_PYTHON_IMAGE_LOCK:-${DEV_DISTROLESS_PYTHON_IMAGE:-}}" \
+		--build-arg DEV_DISTROLESS_NODE_IMAGE="${DEV_DISTROLESS_NODE_IMAGE_LOCK:-${DEV_DISTROLESS_NODE_IMAGE:-}}" \
+		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		--target "${project_scan_image_target}" \
+		-f "${project_dockerfile}" \
+		-t "${scan_image}" .
+	project_image_tar="${docker_tmpdir}/project-image.tar"
+	rm -f "${project_image_tar}"
+	docker save "${scan_image}" -o "${project_image_tar}"
+	docker run --rm --user "${docker_uid}:${docker_gid}" \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges:true \
+		-e HOME="${docker_home}" \
+		-e XDG_CACHE_HOME="${docker_cache_home}" \
+		-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
+		-v "${docker_home_source}:${docker_home}" \
+		-v "${docker_tmpdir}:/tmp" \
+		"${trivy_scan_image}" \
+		image \
+		--scanners vuln \
+		--severity HIGH,CRITICAL \
+		--exit-code 1 \
+		--input /tmp/project-image.tar \
+		--skip-version-check
+	rm -f "${project_image_tar}"
+fi
 
 printf '\n==> Run Kubernetes manifest scan\n'
 if [ -f /tmp/k8s-scan.txt ]; then

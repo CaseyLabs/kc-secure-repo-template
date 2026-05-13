@@ -22,9 +22,9 @@ malicious releases, or incident reports have time to surface.
 Self-hosted Renovate is configured in `.github/renovate.json` and runs through
 `make renovate`.
 
-It updates reviewed selectors in `config/project.cfg`, including tool images and
-Terraform provider versions. After updating those selectors, Renovate is allowed
-to run:
+It updates reviewed selectors in `config/project.cfg`, including tool images,
+language builder images, distroless runtime images, and Terraform provider
+versions. After updating those selectors, Renovate is allowed to run:
 
 ```sh
 sh scripts/update.sh config/project.cfg

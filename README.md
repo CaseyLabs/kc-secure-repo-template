@@ -135,6 +135,7 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 ├── config/
 │   ├── project.cfg           # Project configuration
 │   ├── lockfile.cfg          # Pinned SHA checksums for project tooling
+│   ├── dockerfiles/          # Optional language app Dockerfile templates
 │   ├── k8s/                  # Optional Kubernetes Helm scaffold
 │   └── infra/                # Terraform example for GitHub repo hardening
 ├── .github/

@@ -114,6 +114,16 @@ ghcr_digest() {
 		tr -d '\r' | sed -n 's/^docker-content-digest: //Ip' | head -n 1
 }
 
+# GCR-hosted images such as distroless expose public manifest metadata without
+# the Docker Hub token dance. Keep this narrow so registry behavior stays easy to
+# audit if another non-Docker-Hub registry is introduced later.
+gcr_digest() {
+	curl -fsSI \
+		-H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+		"https://gcr.io/v2/$1/manifests/$2" |
+		tr -d '\r' | sed -n 's/^docker-content-digest: //Ip' | head -n 1
+}
+
 # Accept common image formats and return a digest-pinned reference for each one.
 resolve_image() {
 	case "$1" in
@@ -129,6 +139,16 @@ resolve_image() {
 	ghcr.io/*)
 		repo=${1#ghcr.io/}
 		printf 'ghcr.io/%s@%s\n' "${repo}" "$(ghcr_digest "${repo}" latest)"
+		;;
+	gcr.io/*:*)
+		repo=${1#gcr.io/}
+		tag=${repo##*:}
+		repo=${repo%:*}
+		printf 'gcr.io/%s@%s\n' "${repo}" "$(gcr_digest "${repo}" "${tag}")"
+		;;
+	gcr.io/*)
+		repo=${1#gcr.io/}
+		printf 'gcr.io/%s@%s\n' "${repo}" "$(gcr_digest "${repo}" latest)"
 		;;
 	*/*:*)
 		tag=${1##*:}
@@ -149,6 +169,26 @@ resolve_image() {
 # Resolve every reviewed image selector to the exact digest committed in the repo.
 dev_base_image_lock=$(resolve_image "${DEV_BASE_IMAGE}")
 dev_go_image_lock=$(resolve_image "${DEV_GO_IMAGE}")
+dev_python_image_lock=''
+if [ -n "${DEV_PYTHON_IMAGE:-}" ]; then
+	dev_python_image_lock=$(resolve_image "${DEV_PYTHON_IMAGE}")
+fi
+dev_node_image_lock=''
+if [ -n "${DEV_NODE_IMAGE:-}" ]; then
+	dev_node_image_lock=$(resolve_image "${DEV_NODE_IMAGE}")
+fi
+dev_distroless_static_image_lock=''
+if [ -n "${DEV_DISTROLESS_STATIC_IMAGE:-}" ]; then
+	dev_distroless_static_image_lock=$(resolve_image "${DEV_DISTROLESS_STATIC_IMAGE}")
+fi
+dev_distroless_python_image_lock=''
+if [ -n "${DEV_DISTROLESS_PYTHON_IMAGE:-}" ]; then
+	dev_distroless_python_image_lock=$(resolve_image "${DEV_DISTROLESS_PYTHON_IMAGE}")
+fi
+dev_distroless_node_image_lock=''
+if [ -n "${DEV_DISTROLESS_NODE_IMAGE:-}" ]; then
+	dev_distroless_node_image_lock=$(resolve_image "${DEV_DISTROLESS_NODE_IMAGE}")
+fi
 dev_terraform_image_lock=$(resolve_image "${DEV_TERRAFORM_IMAGE}")
 dev_k8s_helm_image_lock=''
 if [ -n "${DEV_K8S_HELM_IMAGE:-}" ]; then
@@ -174,6 +214,11 @@ cat >config/lockfile.cfg <<EOF
 DEV_PACKAGE_SNAPSHOT_LOCK='${DEV_PACKAGE_SNAPSHOT_LOCK}'
 DEV_BASE_IMAGE_LOCK='${dev_base_image_lock}'
 DEV_GO_IMAGE_LOCK='${dev_go_image_lock}'
+DEV_PYTHON_IMAGE_LOCK='${dev_python_image_lock}'
+DEV_NODE_IMAGE_LOCK='${dev_node_image_lock}'
+DEV_DISTROLESS_STATIC_IMAGE_LOCK='${dev_distroless_static_image_lock}'
+DEV_DISTROLESS_PYTHON_IMAGE_LOCK='${dev_distroless_python_image_lock}'
+DEV_DISTROLESS_NODE_IMAGE_LOCK='${dev_distroless_node_image_lock}'
 DEV_TERRAFORM_IMAGE_LOCK='${dev_terraform_image_lock}'
 DEV_K8S_HELM_IMAGE_LOCK='${dev_k8s_helm_image_lock}'
 DEV_K8S_KUBECTL_IMAGE_LOCK='${dev_k8s_kubectl_image_lock}'
