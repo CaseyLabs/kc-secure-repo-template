@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+
+# Production Python application template:
+# - build wheels and dependencies in a Debian/Trixie Python image
+# - run only the app and installed dependencies in distroless Python as nonroot
+ARG DEV_PYTHON_IMAGE
+ARG DEV_DISTROLESS_PYTHON_IMAGE
+
+FROM ${DEV_PYTHON_IMAGE:-python:3.14.0-slim-trixie} AS dev
+
+WORKDIR /workspace
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+COPY . .
+
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    mkdir -p /deps && \
+    if [ -f src/requirements.txt ]; then \
+        python -m pip install --no-cache-dir --target /deps -r src/requirements.txt; \
+    fi && \
+    python -m compileall -q src
+
+FROM ${DEV_DISTROLESS_PYTHON_IMAGE:-gcr.io/distroless/python3-debian13:nonroot} AS runtime
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src:/deps
+COPY --from=dev /deps /deps
+COPY --from=dev /workspace/src ./src
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/bin/python3", "-m", "app"]

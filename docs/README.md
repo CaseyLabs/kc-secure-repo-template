@@ -6,6 +6,7 @@
 |--------------------------------------------------------------|----------------------------------------------------------------------------|
 | [Customize Template](customize-template.md)                 | How to turn this template into a real derived repository.                  |
 | [Project Build Commands](build-commands.md)                  | What each `make` target does, and why local and CI commands stay aligned.  |
+| [Dockerfile Templates](dockerfile-templates.md)              | Optional Go, Python, and Node.js production container templates.            |
 | [Security Model](security-model.md)                          | Security posture, rationale, and control boundaries.                       |
 | [GitHub Configuration](github-ci.md)                         | GitHub Actions, workflow policy, credentials, and repo configuration.      |
 | [GitOps Naming Conventions](gitops-conventions.md)           | Recommended branch, PR, issue, label, commit, and release naming.          |

@@ -42,6 +42,15 @@ call instead of adding many new root targets.
   outputs used by `make dist` and the release workflow.
 - `DOCKER_BUILD_EXTRA_ARGS`: lets CI provide Buildx cache options without
   changing local defaults.
+- `PROJECT_DOCKERFILE` and `PROJECT_BUILD_TARGET`: select the Dockerfile and
+  target used by the project image workflow.
+- `PROJECT_BUILD_COMMAND`, `PROJECT_LINT_COMMAND`, `PROJECT_TEST_COMMAND`, and
+  `PROJECT_RUN_COMMAND`: customize commands run inside the selected dev
+  container while keeping root `make` targets stable.
+- `PROJECT_SCAN_IMAGE_VULNS=true`: adds a Trivy HIGH/CRITICAL vulnerability scan
+  for the built project runtime image.
+- `PROJECT_SCAN_IMAGE_TARGET`: selects the Dockerfile target to build for that
+  image vulnerability scan. Defaults to `runtime`.
 - `DOCKER_UID`, `DOCKER_GID`, `DOCKER_HOME`, `DOCKER_HOME_SOURCE`, and
   `DOCKER_TMPDIR`: control container user and cache paths for bind-mounted
   workflows.
@@ -58,6 +67,8 @@ tests, scans, and release steps run through Docker images selected by
 This keeps local development, CI, and release behavior close together. It also
 makes dependency changes reviewable: normal version selectors live in
 `config/project.cfg`, while immutable lock values are refreshed by `make update`.
+Optional Go, Python, and Node.js production Dockerfile templates live under
+`config/dockerfiles/`; see `docs/dockerfile-templates.md`.
 
 ## CI Alignment
 
