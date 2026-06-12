@@ -331,6 +331,40 @@ EOF
 	rm -rf "${workdir}"
 }
 
+assert_ci_change_detection() {
+	name=$1
+	changed_files=$2
+	expected_test_code=$3
+	expected_test_repo=$4
+	fixture=$(mktemp)
+
+	printf '%s\n' "${changed_files}" >"${fixture}"
+	output=$(CI_CHANGED_FILES_FILE="${fixture}" sh scripts/ci-changes.sh)
+	rm -f "${fixture}"
+
+	printf '%s\n' "${output}" | grep -qx "test_code=${expected_test_code}" || {
+		printf '%s\n' "${output}" >&2
+		fail "${name}: unexpected test_code decision"
+	}
+	printf '%s\n' "${output}" | grep -qx "test_repo=${expected_test_repo}" || {
+		printf '%s\n' "${output}" >&2
+		fail "${name}: unexpected test_repo decision"
+	}
+}
+
+test_ci_change_detection_rules() {
+	assert_ci_change_detection 'docs-only change detection' 'docs/github-ci.md
+README.md
+.agents/skills/example/SKILL.md
+AGENTS.md' false false
+
+	assert_ci_change_detection 'source change detection' 'src/cmd/app/main.go' true true
+
+	assert_ci_change_detection 'template config change detection' 'config/k8s/chart/values.yaml' false true
+
+	assert_ci_change_detection 'empty diff change detection' '' true true
+}
+
 test_local_state_is_not_packaged() {
 	mkdir -p config/infra src
 	: >config/infra/terraform.tfvars
@@ -995,6 +1029,7 @@ template)
 	test_workflow_run_is_rejected_without_policy_exception
 	test_workflow_missing_permissions_is_rejected
 	test_workflow_metadata_interpolation_is_rejected
+	test_ci_change_detection_rules
 	test_local_state_is_not_packaged
 	test_optional_k8s_update_compat
 	test_optional_k8s_scan_skip

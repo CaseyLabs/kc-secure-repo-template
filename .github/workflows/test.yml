@@ -24,11 +24,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect-test-changes:
+    name: detect-test-changes
+    runs-on: ubuntu-24.04
+    outputs:
+      test_code: ${{ steps.changes.outputs.test_code }}
+      test_repo: ${{ steps.changes.outputs.test_repo }}
+    steps:
+      # The detector is intentionally a tiny shell script, not a path-filtered
+      # workflow. Required checks stay reportable, and skipped test jobs are
+      # marked successful instead of pending.
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Pull request detection compares the synthetic merge commit parents.
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Detect changed test surfaces
+        id: changes
+        run: sh scripts/ci-changes.sh
+
   test-src:
     # Required check: validates the checked-in src/ workspace.
     name: test-code
+    needs: detect-test-changes
+    if: ${{ always() && (needs.detect-test-changes.result != 'success' || needs.detect-test-changes.outputs.test_code == 'true') }}
     runs-on: ubuntu-24.04
     steps:
+      - name: Require successful change detection
+        if: ${{ needs.detect-test-changes.result != 'success' }}
+        run: |
+          printf 'detect-test-changes did not complete successfully\n' >&2
+          exit 1
       # Checkout keeps credentials out of the local Git config after the step.
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -47,8 +74,15 @@ jobs:
     # Required check: copies the template into fresh directories and validates
     # that a generated repository can still build and scan.
     name: test-repo
+    needs: detect-test-changes
+    if: ${{ always() && (needs.detect-test-changes.result != 'success' || needs.detect-test-changes.outputs.test_repo == 'true') }}
     runs-on: ubuntu-24.04
     steps:
+      - name: Require successful change detection
+        if: ${{ needs.detect-test-changes.result != 'success' }}
+        run: |
+          printf 'detect-test-changes did not complete successfully\n' >&2
+          exit 1
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
