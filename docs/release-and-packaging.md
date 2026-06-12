@@ -37,7 +37,7 @@ Releases. To publish a release, create the reviewed `v*` tag and push the tag to
 GitHub. Do not create the GitHub Release manually first; an existing release for
 the same tag blocks the workflow from attaching generated integrity assets.
 
-Maintainers who need a web UI flow should use **Actions** -> **build.yml** ->
+Maintainers who need a web UI flow should use **Actions** -> **release.yml** ->
 **Run workflow** from the default branch, then enter the `v*` release tag. That
 path creates the tag after local release gates pass, then publishes the GitHub
 Release with generated integrity assets. Do not use **Releases** -> **Draft a

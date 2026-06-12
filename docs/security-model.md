@@ -50,7 +50,7 @@ Some protections are enforced by files in this repository:
 - workflow trigger, permissions, metadata, and action pinning policy in
   `make scan`
 - pinned image locks in `config/lockfile.cfg`
-- release tag ancestry checks in `.github/workflows/build.yml`
+- release target ancestry checks in `.github/workflows/release.yml`
 - release artifact generation in `scripts/dist.sh`
 - optional Terraform hardening defaults under `config/infra/`
 
