@@ -104,6 +104,25 @@ container-first, pinned, scanned, and reviewable.
   - treat artifacts from PR code as untrusted
   - add a reviewed policy exception before committing `workflow_run`
 
+## Change Detection
+
+Required workflows should not use top-level `paths` or `paths-ignore` filters.
+When GitHub skips a required workflow this way, the required check can remain
+pending and block the pull request.
+
+Use the checked-in `scripts/ci-changes.sh` detector for small, fast PR gating:
+
+- keep `test.yml` triggered for every pull request
+- gate expensive test jobs with job-level `if:` conditions
+- keep `scan.yml` always running because docs, workflows, examples, and scripts
+  can all contain secrets or policy issues
+- prefer conservative patterns: run tests when the detector cannot confidently
+  classify the change
+
+The default template rules skip expensive tests for docs-only and agent-guidance
+changes, run source tests for source/build/test-surface changes, and run the
+generated-repository smoke test for non-documentation template changes.
+
 ## Workflow Permissions
 
 - Every checked-in workflow must declare a top-level `permissions:` block.
