@@ -1,12 +1,18 @@
 # Build code and artifacts from src/
 name: build.yml
 
-# This workflow only runs for version tags. Normal pushes and pull requests use
-# test.yml and scan.yml for fast feedback.
+# This workflow publishes versioned release artifacts. Normal pushes and pull
+# requests use test.yml and scan.yml for fast feedback.
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Version tag to create and publish, for example v1.2.3."
+        required: true
+        type: string
 
 # Permissions default to none except what each workflow asks for. Releases need
 # write access to create the GitHub release and upload assets, OIDC for
@@ -27,6 +33,8 @@ jobs:
     name: build-artifacts
     # GitHub-hosted Ubuntu runner used for Docker, Make, and artifact actions.
     runs-on: ubuntu-24.04
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
     steps:
       # fetch-depth: 0 gives release tooling and scanners full Git history.
       # persist-credentials: false removes the checkout token after checkout.
@@ -35,9 +43,33 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # Release tags should point at reviewed default-branch history. This keeps
-      # a direct tag push from publishing an unmerged commit as a trusted release.
-      - name: Verify release tag is on default branch
+      # Manual releases from the Actions UI create the version tag from the
+      # selected default-branch commit. The GitHub Releases UI is intentionally
+      # not used because it creates the Release before integrity assets exist.
+      - name: Validate manual release request
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+
+          case "${RELEASE_TAG}" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              printf 'release_tag must look like vX.Y.Z, got %s\n' "${RELEASE_TAG}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]; then
+            printf 'manual releases must run from the default branch (%s), got %s\n' \
+              "${DEFAULT_BRANCH}" "${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+      # Release targets should point at reviewed default-branch history. This
+      # keeps direct tag pushes from publishing unmerged commits as trusted
+      # releases, and keeps manual releases tied to the default branch.
+      - name: Verify release target is on default branch
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
@@ -45,8 +77,21 @@ jobs:
 
           git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${DEFAULT_BRANCH}"; then
-            printf 'release tag %s (%s) is not reachable from origin/%s\n' \
-              "${GITHUB_REF_NAME}" "${GITHUB_SHA}" "${DEFAULT_BRANCH}" >&2
+            printf 'release target %s (%s) is not reachable from origin/%s\n' \
+              "${RELEASE_TAG}" "${GITHUB_SHA}" "${DEFAULT_BRANCH}" >&2
+            exit 1
+          fi
+      # Fail before tests, scans, artifact generation, and attestations if a
+      # maintainer has already created the GitHub Release manually.
+      - name: Verify release does not already exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            printf 'release %s already exists; refusing to modify published assets\n' "${RELEASE_TAG}" >&2
+            printf 'delete the GitHub Release while keeping the tag, then rerun this workflow\n' >&2
             exit 1
           fi
       # Repository variables can override release integrity options without
@@ -78,22 +123,47 @@ jobs:
           write_env ENABLE_GRYPE "${VAR_ENABLE_GRYPE:-$(read_config ENABLE_GRYPE true)}"
           write_env GRYPE_FAIL_ON "${VAR_GRYPE_FAIL_ON:-$(read_config GRYPE_FAIL_ON critical)}"
       # Tags can be created after CI has run, so release repeats the important
-      # quality gates on the exact tagged commit.
-      - name: Verify tests on tagged commit
+      # quality gates on the exact commit that will be or already is tagged.
+      - name: Verify tests on release target
         run: PROJECT_CFG_FILE=config/project.cfg make test
-      - name: Verify security scans on tagged commit
+      - name: Verify security scans on release target
         run: PROJECT_CFG_FILE=config/project.cfg make scan
       # make dist creates the archive plus SBOM, vulnerability report,
       # checksums, and the human-readable release integrity summary.
       - name: Build release artifacts
         env:
-          RELEASE_INTEGRITY_VERSION: ${{ github.ref_name }}
+          RELEASE_INTEGRITY_VERSION: ${{ env.RELEASE_TAG }}
         run: PROJECT_CFG_FILE=config/project.cfg make dist
+      # Tags created with GITHUB_TOKEN do not start a second tag-push workflow
+      # run, so workflow_dispatch releases create the tag and publish in one run.
+      - name: Ensure manual release tag exists
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+
+          tag_ref="refs/tags/${RELEASE_TAG}"
+          if git ls-remote --exit-code --tags origin "${tag_ref}" >/dev/null 2>&1; then
+            git fetch --no-tags origin "+${tag_ref}:${tag_ref}"
+            tag_commit=$(git rev-list -n 1 "${RELEASE_TAG}")
+            if [ "${tag_commit}" != "${GITHUB_SHA}" ]; then
+              printf 'release tag %s already points at %s, expected %s\n' \
+                "${RELEASE_TAG}" "${tag_commit}" "${GITHUB_SHA}" >&2
+              exit 1
+            fi
+            printf 'release tag %s already exists at %s; continuing\n' "${RELEASE_TAG}" "${GITHUB_SHA}"
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="${tag_ref}" \
+              -f sha="${GITHUB_SHA}" >/dev/null
+            printf 'created release tag %s at %s\n' "${RELEASE_TAG}" "${GITHUB_SHA}"
+          fi
       # Upload dist/ so release outputs can be downloaded from the Actions run.
       - name: Upload release artifact bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-${{ github.ref_name }}
+          name: release-${{ env.RELEASE_TAG }}
           path: dist/
       # Attach GitHub artifact provenance for every generated release file.
       - name: Create release provenance attestation
@@ -107,7 +177,6 @@ jobs:
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -eu
 
@@ -117,11 +186,6 @@ jobs:
               release_assets="${release_assets} ${asset}"
             fi
           done
-
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            printf 'release %s already exists; refusing to modify published assets\n' "${RELEASE_TAG}" >&2
-            exit 1
-          fi
 
           # shellcheck disable=SC2086
           gh release create "${RELEASE_TAG}" ${release_assets} \
