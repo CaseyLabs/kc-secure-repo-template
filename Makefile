@@ -4,7 +4,7 @@ PROJECT_NAME ?= kc-secure-template-dev
 PROJECT_IMAGE ?= $(PROJECT_NAME):local
 TEST_MODE ?= src
 
-# Dynamically generate Makefile commands
+# Dynamically generate `make help` output
 PHONY_TARGETS := $(shell awk '/^[[:alnum:]_-]+:([^=]|$$).*##(@internal)? / { sub(/:.*/, "", $$1); print $$1 }' $(lastword $(MAKEFILE_LIST)))
 .PHONY: $(PHONY_TARGETS)
 
