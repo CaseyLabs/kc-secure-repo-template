@@ -12,6 +12,8 @@ maintenance, and repetitive repository tasks.
 - `.agents/skills/`: task-specific workflows for compatible agents.
 - `config/k8s/AGENTS.md` and `config/infra/AGENTS.md`: local rules for
   subtrees with extra hazards and verification needs.
+- `.github/workflows/security-pr-review.md`: optional GitHub Agentic Workflow
+  source for manual, Copilot-backed pull request security review.
 
 The root guidance stays short so it is useful in agent context. More detailed
 review and task workflows live under `.agents/` where they can be loaded only
@@ -53,3 +55,8 @@ in agent guidance.
 Agent support is optional for humans using the template. The repository should
 remain understandable through `README.md`, `docs/`, `Makefile`, and subsystem
 READMEs without requiring an AI tool.
+
+The GitHub-hosted reviewer is also optional and does not replace deterministic
+CI or local agent guidance. See
+[`docs/github-agentic-workflows.md`](github-agentic-workflows.md) for setup,
+authentication, compilation, execution, removal, and template considerations.

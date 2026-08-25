@@ -9,11 +9,15 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
     ├── renovate
     │   └── setup-github-app.sh
     ├── renovate.json
+    ├── aw
+    │   └── actions-lock.json
     └── workflows
-    ├── build.yml
-    ├── renovate.yml
-    ├── scan.yml
-    └── test.yml
+        ├── build.yml
+        ├── renovate.yml
+        ├── scan.yml
+        ├── security-pr-review.md
+        ├── security-pr-review.lock.yml
+        └── test.yml
 ```
 
 ## Folder Contents
@@ -32,6 +36,11 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
 - `renovate/setup-github-app.sh`
   - helper for creating the Renovate GitHub App
   - uses narrow app credentials instead of a broad personal token
+- `workflows/security-pr-review.md`
+  - optional, manually dispatched Copilot-backed security review
+  - compiles to the generated `security-pr-review.lock.yml` workflow
+- `aw/actions-lock.json`
+  - compiler-managed immutable pins used by agentic workflows
 
 Workflow rules:
 
@@ -103,6 +112,8 @@ container-first, pinned, scanned, and reviewable.
   - prefer `workflow_run` handoff patterns when needed
   - treat artifacts from PR code as untrusted
   - add a reviewed policy exception before committing `workflow_run`
+- Keep the optional agentic reviewer manual unless its trigger and trust model
+  receive a separate security review.
 
 ## Workflow Permissions
 
@@ -111,6 +122,8 @@ container-first, pinned, scanned, and reviewable.
 - Keep PR validation and scan workflows read-only.
 - Restrict write, attestation, and OIDC permissions to release or maintenance
   workflows that require them.
+- For agentic workflows, distinguish the read-only agent job from isolated
+  safe-output jobs and inspect both in the generated `.lock.yml`.
 
 ## Untrusted Input
 
@@ -186,3 +199,7 @@ automation.
 
 Document which controls are enforced for each derived repository so maintainers
 know what is protected by git and what depends on GitHub settings.
+
+See [`docs/github-agentic-workflows.md`](github-agentic-workflows.md) for the
+optional PR reviewer, its Copilot credential, generated-file conventions, and
+downstream setup.

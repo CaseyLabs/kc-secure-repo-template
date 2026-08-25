@@ -24,6 +24,9 @@ organization controls.
   integrity part of the release trust boundary.
 - Release outputs can include checksums, an SBOM, a vulnerability report, and
   GitHub artifact attestations.
+- The optional GitHub Agentic Workflow is manually dispatched, gives its agent
+  read-only repository and pull request access, disables shell and repository
+  edits, and limits output to one non-blocking pull request review comment.
 
 ## Why These Controls Exist
 
@@ -36,6 +39,8 @@ organization controls.
   `issue_comment`, and unreviewed `workflow_run` handoffs.
 - Explicit workflow `permissions:` blocks prevent GitHub's repository defaults
   from silently broadening the `GITHUB_TOKEN` scope.
+- Agentic safe outputs isolate the only write permission from the agent job and
+  validate the permitted operation, target, count, and review event.
 - Metadata interpolation checks reduce the risk that PR titles, comments,
   branch names, or other actor-controlled event fields become shell script.
 - Repeating tests and scans during release protects against tags that are created
@@ -63,6 +68,8 @@ Other protections depend on GitHub repository or organization settings:
 - workflow approval policies
 - environment protection rules
 - organization SSO, audit logging, and secret access policies
+- Copilot entitlement and the optional `COPILOT_GITHUB_TOKEN` Actions secret for
+  personal repositories that enable the agentic reviewer
 
 Document the GitHub-side controls for each derived repository so maintainers know
 which protections are actually active.
@@ -85,3 +92,5 @@ or a protected automation environment, not from tracked files.
   and integrity output details.
 - [`docs/terraform.md`](../docs/terraform.md): Terraform-backed GitHub
   hardening workspace.
+- [`docs/github-agentic-workflows.md`](github-agentic-workflows.md): optional
+  Copilot reviewer security boundaries and setup.

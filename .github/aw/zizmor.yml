@@ -1,0 +1,8 @@
+# gh-aw emits GitHub expressions inside framework-owned shell blocks. The
+# compiler's own zizmor integration accepts these generated spans. Scope the
+# compatibility exception to this lockfile; hand-written workflows are scanned
+# separately without this configuration.
+rules:
+  template-injection:
+    ignore:
+      - security-pr-review.lock.yml

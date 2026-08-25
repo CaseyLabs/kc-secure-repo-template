@@ -25,6 +25,7 @@ Makefile
 README.md
 code_review.md
 .dockerignore
+.gitattributes
 .gitignore
 .agents
 .github
