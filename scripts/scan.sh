@@ -284,6 +284,16 @@ fi
 
 printf '\n==> Run workflow lint\n'
 # Use actionlint in a container so CI and local runs use the same tool version.
+# Lint hand-written workflows without exceptions. gh-aw v0.86.2 generates the
+# preview `concurrency.queue` key; use the same narrow compatibility ignore as
+# `gh aw compile --actionlint` only for compiler-owned lockfiles.
+set --
+for workflow in .github/workflows/*.yml; do
+	case "${workflow}" in
+	*.lock.yml) ;;
+	*) set -- "$@" "${workflow}" ;;
+	esac
+done
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
@@ -296,7 +306,25 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	"${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}" \
 	-shellcheck= \
 	-pyflakes= \
-	.github/workflows/*.yml
+	"$@"
+
+for workflow in .github/workflows/*.lock.yml; do
+	[ -e "${workflow}" ] || continue
+	docker run --rm --user "${docker_uid}:${docker_gid}" \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges:true \
+		-e HOME="${docker_home}" \
+		-e XDG_CACHE_HOME="${docker_cache_home}" \
+		-v "${docker_home_source}:${docker_home}" \
+		-v "${docker_tmpdir}:/tmp" \
+		-v "$(pwd):/workspace" \
+		-w /workspace \
+		"${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}" \
+		-shellcheck= \
+		-pyflakes= \
+		-ignore 'unexpected key "queue" for "concurrency" section' \
+		"${workflow}"
+done
 
 zizmor_scan_image=${DEV_SCAN_ZIZMOR_IMAGE_LOCK}
 case "${zizmor_scan_image}" in
@@ -309,7 +337,7 @@ esac
 
 printf '\n==> Run GitHub Actions security scan\n'
 # zizmor complements actionlint by checking workflow security footguns without
-# executing workflow code. Offline mode keeps local and CI scans deterministic.
+# executing workflow code. Scan hand-written workflows without exceptions.
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
@@ -322,9 +350,50 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	"${zizmor_scan_image}" \
 	--offline \
 	--strict-collection \
-	--collect=workflows,actions \
 	--persona=regular \
-	.
+	"$@"
+
+# Preserve the repository-wide composite-action coverage from the original
+# scan while keeping generated workflow handling separate.
+if find . -type f \( -name action.yml -o -name action.yaml \) -print -quit | grep -q .; then
+	docker run --rm --user "${docker_uid}:${docker_gid}" \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges:true \
+		-e HOME="${docker_home}" \
+		-e XDG_CACHE_HOME="${docker_cache_home}" \
+		-v "${docker_home_source}:${docker_home}" \
+		-v "${docker_tmpdir}:/tmp" \
+		-v "$(pwd):/workspace" \
+		-w /workspace \
+		"${zizmor_scan_image}" \
+		--offline \
+		--strict-collection \
+		--collect=actions \
+		--persona=regular \
+		.
+fi
+
+# gh-aw's generated shell blocks contain GitHub expressions that its compiler
+# validates as framework code. Apply the reviewed, file-scoped compatibility
+# config only to generated lockfiles; never weaken the hand-written scan above.
+for workflow in .github/workflows/*.lock.yml; do
+	[ -e "${workflow}" ] || continue
+	docker run --rm --user "${docker_uid}:${docker_gid}" \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges:true \
+		-e HOME="${docker_home}" \
+		-e XDG_CACHE_HOME="${docker_cache_home}" \
+		-v "${docker_home_source}:${docker_home}" \
+		-v "${docker_tmpdir}:/tmp" \
+		-v "$(pwd):/workspace" \
+		-w /workspace \
+		"${zizmor_scan_image}" \
+		--config .github/aw/zizmor.yml \
+		--offline \
+		--strict-collection \
+		--persona=regular \
+		"${workflow}"
+done
 
 trivy_scan_image=${DEV_SCAN_TRIVY_IMAGE_LOCK}
 case "${trivy_scan_image}" in

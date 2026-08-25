@@ -28,6 +28,10 @@ updates:
           - "major"
           - "minor"
           - "patch"
+    # gh-aw lockfiles are compiler output. Update these action pins through the
+    # reviewed gh-aw compiler instead of allowing Dependabot to edit them.
+    ignore:
+      - dependency-name: "github/gh-aw-actions"
 
   # Check Dockerfiles used by this repository.
   - package-ecosystem: "docker"
