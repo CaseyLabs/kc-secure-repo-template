@@ -18,6 +18,7 @@ permissions:
 
 tools:
   bash: false
+  edit: false
   cli-proxy: false
   github:
     mode: local

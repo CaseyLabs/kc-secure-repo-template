@@ -10,7 +10,8 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
     │   └── setup-github-app.sh
     ├── renovate.json
     ├── aw
-    │   └── actions-lock.json
+    │   ├── actions-lock.json
+    │   └── zizmor.yml
     └── workflows
         ├── build.yml
         ├── renovate.yml
@@ -41,6 +42,8 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
   - compiles to the generated `security-pr-review.lock.yml` workflow
 - `aw/actions-lock.json`
   - compiler-managed immutable pins used by agentic workflows
+- `aw/zizmor.yml`
+  - compatibility exceptions scoped exclusively to generated agentic lockfiles
 
 Workflow rules:
 

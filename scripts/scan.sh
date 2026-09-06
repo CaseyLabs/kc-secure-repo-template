@@ -289,6 +289,7 @@ printf '\n==> Run workflow lint\n'
 # `gh aw compile --actionlint` only for compiler-owned lockfiles.
 set --
 for workflow in .github/workflows/*.yml; do
+	[ -e "${workflow}" ] || continue
 	case "${workflow}" in
 	*.lock.yml) ;;
 	*) set -- "$@" "${workflow}" ;;

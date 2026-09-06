@@ -25,8 +25,9 @@ organization controls.
 - Release outputs can include checksums, an SBOM, a vulnerability report, and
   GitHub artifact attestations.
 - The optional GitHub Agentic Workflow is manually dispatched, gives its agent
-  read-only repository and pull request access, disables shell and repository
-  edits, and limits output to one non-blocking pull request review comment.
+  read-only repository and pull request access, disables shell execution,
+  prevents persisting repository edits, and limits output to one non-blocking
+  pull request review comment.
 
 ## Why These Controls Exist
 

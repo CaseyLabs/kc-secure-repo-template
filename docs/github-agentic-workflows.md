@@ -46,7 +46,7 @@ The reviewer is intentionally narrow:
 - execution is manual and requires an explicit pull request number
 - the agent job has only `contents: read` and `pull-requests: read`
 - the only GitHub MCP operation is `pull_request_read` in the current repository
-- shell, CLI proxy, external retrieval, and repository editing are disabled
+- shell, CLI proxy, and external retrieval are disabled; repository edits cannot be persisted (git credentials are removed, `GITHUB_TOKEN` permissions are read-only, and push outputs are absent)
 - pull request text and changes are treated as untrusted instructions
 - a separate safe-output job may submit at most one pull request review
 - the only permitted review event is non-blocking `COMMENT`
