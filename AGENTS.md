@@ -70,6 +70,10 @@ If no matching skill exists, follow this file and the repository itself.
 - `config/project.cfg` is the main customization point.
 - `Dockerfile` provides the development and CI runtime baseline.
 - `.github/workflows/` should call `make` targets instead of duplicating project logic inline.
+- For GitHub Agentic Workflows, treat `.md` as reviewed source and `.lock.yml`
+  plus `.github/aw/actions-lock.json` as generated. Never hand-edit generated
+  files; compile with a reviewed pinned gh-aw release and inspect changes to
+  actions, containers, secrets, permissions, tools, and safe outputs.
 - `.agents/code_review.md` contains the detailed `/review` checklist; keep `AGENTS.md` focused on durable operating rules.
 - `.agents/skills/*/SKILL.md` contains task-specific agent workflows; keep skill routing in this file aligned with the actual local skills.
 - `config/infra/` and `config/k8s/` have subtree `AGENTS.md` files with local hazards and verification rules.

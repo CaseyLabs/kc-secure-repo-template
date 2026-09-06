@@ -12,5 +12,6 @@
 | [Release & Packaging](release-and-packaging.md)              | Template outputs, SBOMs, checksums, and attestations.                      |
 | [Dependency Updates](dependency-updates.md)                  | Dependabot, Renovate, cooldowns, and lock refresh strategies.              |
 | [AI Agent Support](ai-agent-support.md)                      | Optional AI agent guidance included with the template.                     |
+| [GitHub Agentic Workflows](github-agentic-workflows.md)      | Optional Copilot-backed pull request security review.                      |
 | [Terraform Support](terraform.md)                            | Terraform-based GitHub repository hardening workspace.                     |
 | [Kubernetes Support](k8s.md)                                 | Helm scaffold usage and customization points.                              |

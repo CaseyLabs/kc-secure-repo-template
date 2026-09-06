@@ -157,6 +157,7 @@ make infra    # build/test/plan Terraform config from `./config/infra`
     - [Release and Packaging](docs/release-and-packaging.md)
     - [Dependency Updates](docs/dependency-updates.md)
   - [AI Agent Support](docs/ai-agent-support.md)
+    - [GitHub Agentic Workflows](docs/github-agentic-workflows.md)
   - [Terraform Support](docs/terraform.md)
   - [Kubernetes Support](docs/k8s.md)
 

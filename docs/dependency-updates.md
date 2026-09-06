@@ -13,6 +13,12 @@ It updates:
 - GitHub Actions used by workflows
 - Dockerfile dependency references when present
 
+Dependabot intentionally ignores `github/gh-aw-actions` references in generated
+agentic workflow lockfiles. Refresh those pins with the reviewed gh-aw compiler,
+then inspect the generated workflow and `.github/aw/actions-lock.json` together.
+This keeps compiler version changes, permissions, safe outputs, containers, and
+action pins in one reviewable update.
+
 Routine update PRs wait for the configured cooldown period. This timing defense
 helps avoid immediately adopting a newly published action or image before yanks,
 malicious releases, or incident reports have time to surface.
