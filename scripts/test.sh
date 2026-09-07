@@ -206,6 +206,12 @@ check_agentic_workflow_repository_scope() {
 		fail 'security reviewer safe output must use the lowercase repository scope'
 }
 
+check_agentic_workflow_model() {
+	grep -Fq "COPILOT_MODEL: gpt-5" \
+		.github/workflows/security-pr-review.lock.yml ||
+		fail 'security reviewer must compile the supported explicit Copilot model'
+}
+
 # Nested `dist/` directories are usually an accidental packaging bug.
 assert_no_nested_dist_dirs() {
 	if find . -mindepth 2 -type d -name dist | grep -q .; then
@@ -1011,6 +1017,7 @@ template)
 	check_workflow_trigger_policy
 	check_workflow_metadata_policy
 	check_agentic_workflow_repository_scope
+	check_agentic_workflow_model
 	assert_no_nested_dist_dirs
 	test_workflow_pull_request_target_is_rejected
 	test_workflow_issue_comment_is_rejected
