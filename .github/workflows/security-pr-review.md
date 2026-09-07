@@ -24,7 +24,7 @@ tools:
     mode: local
     toolsets: [pull_requests]
     allowed-repos:
-      - ${{ github.repository }}
+      - caseylabs/kc-secure-repo-template
     min-integrity: none
     allowed:
       - pull_request_read
@@ -37,6 +37,7 @@ safe-outputs:
   submit-pull-request-review:
     max: 1
     target: ${{ github.event.inputs.pr_number }}
+    target-repo: caseylabs/kc-secure-repo-template
     allowed-events: [COMMENT]
     footer: always
 ---

@@ -187,11 +187,23 @@ check_workflow_metadata_policy() {
 }
 
 check_agentic_workflow_repository_scope() {
-	# gh-aw-mcpg accepts exact repository scopes as arrays. A scalar GitHub
-	# expression resolves to owner/repo at runtime and fails gateway startup.
-	grep -Fq "GH_AW_GITHUB_REPOS: '[\"\${{ github.repository }}\"]'" \
+	# gh-aw-mcpg accepts exact repository scopes as lowercase arrays. Keep the
+	# read guard and safe-output write sink aligned with the reviewed source.
+	repository_scope=$(sed -n 's/^    target-repo: //p' \
+		.github/workflows/security-pr-review.md)
+	[ -n "${repository_scope}" ] ||
+		fail 'security reviewer must define an explicit safe-output repository scope'
+	[ "${repository_scope}" = "$(printf '%s' "${repository_scope}" | tr '[:upper:]' '[:lower:]')" ] ||
+		fail 'security reviewer repository scope must be lowercase'
+	grep -Fq "      - ${repository_scope}" \
+		.github/workflows/security-pr-review.md ||
+		fail 'security reviewer read and safe-output repository scopes must match'
+	grep -Fq "GH_AW_GITHUB_REPOS: '[\"${repository_scope}\"]'" \
 		.github/workflows/security-pr-review.lock.yml ||
-		fail 'security reviewer must compile the current repository scope as an array'
+		fail 'security reviewer must compile the lowercase repository scope as an array'
+	grep -Fq "\"private:${repository_scope}\"" \
+		.github/workflows/security-pr-review.lock.yml ||
+		fail 'security reviewer safe output must use the lowercase repository scope'
 }
 
 # Nested `dist/` directories are usually an accidental packaging bug.

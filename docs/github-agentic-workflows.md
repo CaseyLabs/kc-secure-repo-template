@@ -45,7 +45,8 @@ The reviewer is intentionally narrow:
 
 - execution is manual and requires an explicit pull request number
 - the agent job has only `contents: read` and `pull-requests: read`
-- the only GitHub MCP operation is `pull_request_read` in the current repository
+- the only GitHub MCP operation is `pull_request_read` in the explicitly named
+  lowercase repository scope
 - shell, CLI proxy, and external retrieval are disabled; repository edits cannot be persisted (git credentials are removed, `GITHUB_TOKEN` permissions are read-only, and push outputs are absent)
 - pull request text and changes are treated as untrusted instructions
 - a separate safe-output job may submit at most one pull request review
@@ -151,6 +152,13 @@ inherit Actions secrets, Copilot entitlements, workflow history, or repository
 settings. The workflow remains dormant until a maintainer configures
 authentication and manually dispatches it.
 
+Before compiling in a derived repository, replace both
+`caseylabs/kc-secure-repo-template` entries in
+`.github/workflows/security-pr-review.md` with that repository's lowercase
+`owner/repository` name. The explicit value is required because the MCP gateway
+rejects uppercase scope characters while GitHub's repository context preserves
+owner casing.
+
 During template customization:
 
 - keep the workflow only if Copilot-backed review is wanted
@@ -179,6 +187,7 @@ needs it. Then run the normal workflow, security, and packaging checks.
 - compile with the pinned, reviewed gh-aw release
 - compile a second time and confirm no generated drift
 - inspect agent and safe-output job permissions in the `.lock.yml`
+- confirm both repository scopes are the current lowercase `owner/repository`
 - confirm only `COMMENT` reviews are allowed and the review maximum is one
 - confirm external Actions and containers are immutably pinned
 - confirm the zizmor exception remains limited to compiler-owned lockfiles
