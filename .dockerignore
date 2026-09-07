@@ -1,6 +1,7 @@
 .env
 .git
 .agents
+.claude
 .cache
 .tmp
 **/.terraform
