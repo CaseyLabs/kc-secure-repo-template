@@ -9,7 +9,7 @@ on:
         type: string
 
 engine: copilot
-model: gpt-5
+model: gpt-5-mini
 strict: true
 timeout-minutes: 15
 
