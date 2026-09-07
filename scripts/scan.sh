@@ -33,8 +33,10 @@ docker_tmpdir=${DOCKER_TMPDIR:-$(pwd)/.cache/docker-tmp}
 mkdir -p "${docker_home_source}" "${docker_tmpdir}"
 k8s_stage_dir=''
 k8s_metadata_file=''
+k8s_log=''
 
 cleanup() {
+	[ -z "${k8s_log}" ] || rm -f "${k8s_log}"
 	if [ -n "${k8s_stage_dir}" ]; then
 		rm -rf "${k8s_stage_dir}"
 	fi
@@ -44,136 +46,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM HUP
 
-# Read every external GitHub Action reference from workflow files.
-list_workflow_entries() {
-	for workflow in .github/workflows/*.yml; do
-		awk -v workflow="${workflow}" '
-			/^[[:space:]]*-[[:space:]]+uses:[[:space:]]+/ || /^[[:space:]]+uses:[[:space:]]+/ {
-				ref = $0
-				sub(/^[[:space:]]*-[[:space:]]+uses:[[:space:]]+/, "", ref)
-				sub(/^[[:space:]]*uses:[[:space:]]+/, "", ref)
-				comment = ""
-				if (match(ref, /[[:space:]]+#.*$/)) {
-					comment = substr(ref, RSTART + 1)
-					sub(/^[[:space:]]+/, "", comment)
-					sub(/^#[[:space:]]*/, "", comment)
-					sub(/[[:space:]]+$/, "", comment)
-					sub(/[[:space:]]+#.*$/, "", ref)
-				}
-				sub(/[[:space:]]+$/, "", ref)
-				if (ref ~ /^(\.\/|\.\.\/)/) {
-					next
-				}
-				printf "%s\t%s\t%s\n", workflow, ref, comment
-			}
-		' "${workflow}"
-	done
-}
-
-# Enforce "pin by full SHA" plus a nearby reviewed tag comment for every action.
-check_workflow_action_pins() {
-	list_workflow_entries | while IFS="$(printf '\t')" read -r workflow ref comment; do
-		case "${ref}" in
-		*/*@[0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
-			sha=${ref##*@}
-			printf '%s\n' "${sha}" | grep -Eq '^[0-9a-f]{40}$' || {
-				printf '%s must pin actions by full SHA: %s\n' "${workflow}" "${ref}" >&2
-				exit 1
-			}
-			;;
-		*)
-			printf '%s uses an invalid action ref: %s\n' "${workflow}" "${ref}" >&2
-			exit 1
-			;;
-		esac
-
-		case "${comment}" in
-		v*) ;;
-		*)
-			printf '%s must keep a reviewed release tag comment for %s\n' "${workflow}" "${ref}" >&2
-			exit 1
-			;;
-		esac
-	done
-}
-
-# Require every workflow to opt into only the token scopes it needs. This avoids
-# old repository defaults silently granting write-scoped GITHUB_TOKEN access.
-check_workflow_permissions_policy() {
-	for workflow in .github/workflows/*.yml; do
-		if ! grep -Eq '^permissions:[[:space:]]*($|[{])' "${workflow}"; then
-			printf '%s: missing top-level permissions block; set explicit workflow permissions\n' "${workflow}" >&2
-			return 1
-		fi
-	done
-}
-
-# Reject privileged or untrusted event triggers by default. These events can be
-# safe only for tightly reviewed metadata-only automation, but this template's
-# default CI paths build and scan pull request contents as untrusted code.
-check_workflow_trigger_policy() {
-	awk '
-		{
-			line = $0
-			sub(/[[:space:]]+#.*$/, "", line)
-			if (line ~ /(^|[^A-Za-z0-9_-])pull_request_target([^A-Za-z0-9_-]|$)/) {
-				printf "%s:%d: pull_request_target is not allowed in template workflows\n", FILENAME, FNR
-				found = 1
-			}
-			if (line ~ /(^|[^A-Za-z0-9_-])issue_comment([^A-Za-z0-9_-]|$)/) {
-				printf "%s:%d: issue_comment is not allowed in template workflows\n", FILENAME, FNR
-				found = 1
-			}
-			if (line ~ /(^|[^A-Za-z0-9_-])workflow_run([^A-Za-z0-9_-]|$)/) {
-				printf "%s:%d: workflow_run requires a dedicated reviewed policy exception\n", FILENAME, FNR
-				found = 1
-			}
-		}
-		END {
-			exit found ? 1 : 0
-		}
-	' .github/workflows/*.yml
-}
-
-# Block direct interpolation of actor-controlled event metadata into shell. Pass
-# untrusted values through reviewed metadata-only steps or allowlisted values.
-check_workflow_metadata_policy() {
-	for workflow in .github/workflows/*.yml; do
-		awk '
-			function is_untrusted_metadata(line) {
-				return line ~ /\$\{\{[^}]*github\.event\.(issue|comment)\./ ||
-					line ~ /\$\{\{[^}]*github\.event\.pull_request\.(title|body|head_ref|head\.ref|head\.label)/ ||
-					line ~ /\$\{\{[^}]*github\.event\.workflow_run\./ ||
-					line ~ /\$\{\{[^}]*github\.head_ref/
-			}
-			{
-				line = $0
-				sub(/[[:space:]]+#.*$/, "", line)
-				indent = match($0, /[^ ]/) ? RSTART - 1 : 0
-				if (in_run && indent <= run_indent && line !~ /^[[:space:]]*$/) {
-					in_run = 0
-				}
-				if (in_run && is_untrusted_metadata(line)) {
-					printf "%s:%d: untrusted github.event metadata must not be interpolated directly into run steps\n", FILENAME, FNR
-					found = 1
-				}
-				if (line ~ /^[[:space:]]*(-[[:space:]]*)?run:[[:space:]]*/) {
-					run_indent = indent
-					if (is_untrusted_metadata(line)) {
-						printf "%s:%d: untrusted github.event metadata must not be interpolated directly into run steps\n", FILENAME, FNR
-						found = 1
-					}
-					if (line ~ /^[[:space:]]*(-[[:space:]]*)?run:[[:space:]]*[>|]/) {
-						in_run = 1
-					}
-				}
-			}
-			END {
-				exit found ? 1 : 0
-			}
-		' "${workflow}" || return 1
-	done
-}
+. ./scripts/workflow-policy.sh
 
 printf '\n==> Build project image\n'
 # GitHub Actions can opt into Buildx cache export/import without changing local defaults.
@@ -198,8 +71,8 @@ else
 		-t "${project_image}" .
 fi
 
-printf '\n==> Run lint, test, and build commands\n'
-# Syntax-check every shell script and regenerate the template manifest inside the container.
+printf '\n==> Check shell syntax\n'
+# Syntax-check scripts inside the container; scanning does not generate release files.
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
@@ -210,7 +83,7 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${project_image}" \
-	sh -eu -c 'find scripts -type f -name '"'"'*.sh'"'"' -print | LC_ALL=C sort | while IFS= read -r path; do sh -n "${path}"; done && sh ./scripts/template.sh manifest'
+	sh -eu -c 'find scripts -type f -name '"'"'*.sh'"'"' -print | LC_ALL=C sort | while IFS= read -r path; do sh -n "${path}"; done '
 
 k8s_chart_path=${K8S_CHART_PATH:-config/k8s/chart}
 case "${k8s_chart_path}" in
@@ -223,7 +96,8 @@ k8s_helm_image=${DEV_K8S_HELM_IMAGE_LOCK:-${DEV_K8S_HELM_IMAGE:-}}
 if [ -n "${k8s_helm_image}" ] && [ -d "${k8s_chart_path}" ]; then
 	k8s_metadata_file=$(mktemp "${docker_tmpdir}/k8s-scan-meta.XXXXXX")
 	printf '\n==> Render Kubernetes manifests\n'
-	K8S_METADATA_FILE="${k8s_metadata_file}" sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >/tmp/k8s-scan.txt
+	k8s_log=$(mktemp "${docker_tmpdir}/k8s-scan-log.XXXXXX")
+	K8S_METADATA_FILE="${k8s_metadata_file}" sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >"${k8s_log}"
 	# shellcheck disable=SC1090
 	. "${k8s_metadata_file}"
 	[ -n "${K8S_RENDER_FILE:-}" ] || {
@@ -241,7 +115,6 @@ if [ -n "${k8s_helm_image}" ] && [ -d "${k8s_chart_path}" ]; then
 else
 	printf '\n==> Skip Kubernetes manifest scan\n'
 	printf '%s\n' 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan'
-	rm -f /tmp/k8s-scan.txt
 fi
 
 # Secret scanning is security-sensitive, so require a digest-pinned scanner image.
@@ -357,7 +230,7 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	/workspace
 
 printf '\n==> Run Kubernetes manifest scan\n'
-if [ -f /tmp/k8s-scan.txt ]; then
+if [ -n "${k8s_render_file_scan_path}" ]; then
 	docker run --rm --user "${docker_uid}:${docker_gid}" \
 		--cap-drop=ALL \
 		--security-opt=no-new-privileges:true \

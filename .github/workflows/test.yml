@@ -53,6 +53,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # TEST_MODE=smoke selects the generated-repo smoke path in scripts/test.sh.
+      # TEST_MODE=template selects the generated-repo smoke path in scripts/test.sh.
       - name: Run generated repository smoke test
-        run: PROJECT_CFG_FILE=config/project.cfg TEST_MODE=smoke make test
+        run: PROJECT_CFG_FILE=config/project.cfg TEST_MODE=template make test

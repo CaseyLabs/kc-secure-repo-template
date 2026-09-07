@@ -27,65 +27,6 @@ for cmd in awk curl jq perl sed tr head; do
 	require_command "${cmd}"
 done
 
-# Collect all external action references from workflow files.
-list_workflow_entries() {
-	for workflow in .github/workflows/*.yml; do
-		awk -v workflow="${workflow}" '
-			/^[[:space:]]*-[[:space:]]+uses:[[:space:]]+/ || /^[[:space:]]+uses:[[:space:]]+/ {
-				ref = $0
-				sub(/^[[:space:]]*-[[:space:]]+uses:[[:space:]]+/, "", ref)
-				sub(/^[[:space:]]*uses:[[:space:]]+/, "", ref)
-				if (ref ~ /[[:space:]]+#.*$/) {
-					sub(/[[:space:]]+#.*$/, "", ref)
-				}
-				sub(/[[:space:]]+$/, "", ref)
-				if (ref ~ /^(\.\/|\.\.\/)/) {
-					next
-				}
-				print ref
-			}
-		' "${workflow}"
-	done | LC_ALL=C sort -u
-}
-
-# Keep the README allowlist section aligned with the actual workflow files.
-sync_workflow_allowlist() {
-	tmp=$(mktemp)
-	trap 'rm -f "${tmp}" "${tmp}.new"' EXIT INT TERM
-
-	list_workflow_entries | awk '{ printf "- `%s`\n", $0 }' >"${tmp}"
-
-	awk -v action_file="${tmp}" '
-		BEGIN {
-			while ((getline line < action_file) > 0) {
-				actions = actions line ORS
-			}
-			close(action_file)
-		}
-		/^### Current Actions$/ && !done {
-			print
-			print ""
-			printf "%s", actions
-			print ""
-			skip = 1
-			done = 1
-			next
-		}
-		skip {
-			if ($0 == "### Allowlist Guidance") {
-				skip = 0
-				print
-			}
-			next
-		}
-		{ print }
-	' README.md >"${tmp}.new"
-
-	mv "${tmp}.new" README.md
-	rm -f "${tmp}"
-	trap - EXIT INT TERM
-}
-
 # Load the reviewed image tags and version selectors that this script will lock down.
 . "${project_cfg_file}"
 
@@ -186,17 +127,11 @@ DEV_SCAN_GRYPE_IMAGE_LOCK='${dev_scan_grype_image_lock}'
 DEV_RENOVATE_IMAGE_LOCK='${dev_renovate_image_lock}'
 EOF
 
-# Keep infra and README references synchronized with the newly resolved locks.
+# Keep the optional infra image and provider selectors synchronized.
 DEV_TERRAFORM_IMAGE_LOCK_VALUE=${dev_terraform_image_lock} \
 	DEV_BASE_IMAGE_LOCK_VALUE=${dev_base_image_lock} \
 	perl -0pi -e 's#^FROM .* AS terraform-cli$#FROM $ENV{DEV_TERRAFORM_IMAGE_LOCK_VALUE} AS terraform-cli#m; s#^FROM .* AS dev-base$#FROM $ENV{DEV_BASE_IMAGE_LOCK_VALUE} AS dev-base#m' config/infra/Dockerfile
 DEV_TERRAFORM_GITHUB_PROVIDER_VERSION_VALUE=${DEV_TERRAFORM_GITHUB_PROVIDER_VERSION} \
 	perl -0pi -e 's#^      version = ".*"$#      version = "= $ENV{DEV_TERRAFORM_GITHUB_PROVIDER_VERSION_VALUE}"#m' config/infra/versions.tf
-DEV_TERRAFORM_IMAGE_VALUE=${DEV_TERRAFORM_IMAGE} \
-	DEV_TERRAFORM_IMAGE_LOCK_VALUE=${dev_terraform_image_lock} \
-	DEV_TERRAFORM_GITHUB_PROVIDER_VERSION_VALUE=${DEV_TERRAFORM_GITHUB_PROVIDER_VERSION} \
-	perl -0pi -e 's#^- Terraform image `.*` pinned to `.*`$#- Terraform image `$ENV{DEV_TERRAFORM_IMAGE_VALUE}` pinned to `$ENV{DEV_TERRAFORM_IMAGE_LOCK_VALUE}`#m; s#^- GitHub provider `integrations/github` with `= .*`$#- GitHub provider `integrations/github` with `= $ENV{DEV_TERRAFORM_GITHUB_PROVIDER_VERSION_VALUE}`#m' README.md
-sync_workflow_allowlist
-
 # End with a short machine-readable summary for maintainers.
-printf '%s\n' 'updated config/lockfile.cfg and aligned infra/README workflow pins'
+printf '%s\n' 'updated config/lockfile.cfg and aligned infra image and provider versions'

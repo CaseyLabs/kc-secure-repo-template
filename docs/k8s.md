@@ -78,3 +78,7 @@ repository-relative paths or absolute host paths.
 
 Keep Kubernetes-specific static assets in `config/k8s/`. Put execution glue in
 `scripts/` only when it needs to participate in the root `make` interface.
+
+Local validation propagates kubectl failures as a nonzero exit status. Each run
+stages its kubeconfig and output in private temporary paths and removes them on
+exit; `K8S_TEST_LOCAL_CONTEXT` is passed as a single argument.

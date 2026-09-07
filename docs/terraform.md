@@ -28,7 +28,8 @@ Workflow notes:
 - `make example` still points at the smaller Go demo under `src`
 - use `make infra` for the Terraform workspace under `config/infra`
 - `make infra` builds the infra dev container image
-- `make infra` runs Terraform formatting and validation
+- `make infra` checks Terraform formatting and validates using the reviewed
+  `.terraform.lock.hcl`; ordinary runs never delete or update provider locks
 - `make infra` generates `.tmp/infra/github-repository.tfplan`
 - `make infra` prints the reviewed apply command
 - `APPLY=true make infra` reuses the same flow, then applies the generated plan
@@ -82,3 +83,17 @@ For organization or GitHub Enterprise repositories:
 - adjust provider settings before applying
 - adjust input defaults before applying
 - verify GitHub-side controls before relying on them
+
+## Provider Lock Maintenance
+
+- Keep `config/infra/.terraform.lock.hcl` in version control and the template
+  archive. It records provider checksums for Linux amd64 and arm64 containers,
+  following [Terraform's lockfile guidance](https://developer.hashicorp.com/terraform/language/files/dependency-lock).
+- After changing the provider version, run `INFRA_UPDATE_LOCK=true make infra`
+  and review the lockfile together with the version change. This also applies
+  to Renovate PRs that change the provider selector; they require this reviewed
+  lock refresh before the ordinary validation check can pass.
+- Lock maintenance cannot be combined with `APPLY=true`. Normal validation uses
+  `terraform init -lockfile=readonly` and fails on an outdated lock.
+- The container receives `GITHUB_TOKEN` by environment variable name. No token
+  is placed in command arguments or build layers.

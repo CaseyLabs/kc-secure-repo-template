@@ -36,7 +36,11 @@ call instead of adding many new root targets.
 
 - `PROJECT_CFG_FILE`: selects the project config file. Defaults to
   `config/project.cfg`.
-- `TEST_MODE`: selects `src`, `template`, or `smoke` behavior for `make test`.
+- `TEST_MODE`: defaults to `src`. `template` runs isolated shell regressions and
+  copied-repository build, test, Terraform, Helm, and packaging checks. `smoke`
+  remains a compatibility alias for that same suite.
+- `INFRA_UPDATE_LOCK=true`: explicitly refreshes provider checksums during
+  `make infra`; review the resulting lockfile before applying.
 - `APPLY=true`: lets `make infra` apply the generated Terraform plan.
 - `ENABLE_SBOM`, `ENABLE_GRYPE`, `GRYPE_FAIL_ON`: control release integrity
   outputs used by `make dist` and the release workflow.

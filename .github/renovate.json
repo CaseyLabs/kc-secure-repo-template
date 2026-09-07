@@ -37,7 +37,6 @@
       "sh scripts/update.sh config/project.cfg"
     ],
     "fileFilters": [
-      "README.md",
       "config/project.cfg",
       "config/lockfile.cfg",
       "config/infra/Dockerfile",
