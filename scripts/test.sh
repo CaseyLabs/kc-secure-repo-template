@@ -207,9 +207,9 @@ check_agentic_workflow_repository_scope() {
 }
 
 check_agentic_workflow_model() {
-	grep -Fq "COPILOT_MODEL: gpt-5-mini" \
+	grep -Fq "COPILOT_MODEL: default" \
 		.github/workflows/security-pr-review.lock.yml ||
-		fail 'security reviewer must compile the supported explicit Copilot model'
+		fail 'security reviewer must defer model selection to the Copilot entitlement'
 }
 
 # Nested `dist/` directories are usually an accidental packaging bug.

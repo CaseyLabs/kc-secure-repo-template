@@ -44,8 +44,8 @@ Copilot inference secret.
 The reviewer is intentionally narrow:
 
 - execution is manual and requires an explicit pull request number
-- the Copilot model is pinned to `gpt-5-mini` instead of relying on an
-  entitlement-dependent `auto` selection
+- the Copilot model uses the `default` sentinel so Copilot selects a model
+  supported by the token's entitlement
 - the agent job has only `contents: read` and `pull-requests: read`
 - the only GitHub MCP operation is `pull_request_read` in the explicitly named
   lowercase repository scope
