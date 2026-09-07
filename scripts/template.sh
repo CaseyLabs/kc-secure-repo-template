@@ -15,6 +15,7 @@ README.md
 .dockerignore
 .gitignore
 .agents
+.claude/skills
 .github
 docs
 config

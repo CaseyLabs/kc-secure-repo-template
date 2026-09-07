@@ -52,7 +52,7 @@ Typical routing:
 - Use `release-integrity` when working on SBOMs, attestations, artifact scanning, signing guidance, or release workflow safety.
 - Use `language-profile-guidance` when adding or revising optional Go, Node.js, SQL, or polyglot guidance.
 - Use `pr-draft-summary` when drafting a PR handoff after substantive repository changes.
-- Use `security-review` only when the user explicitly invokes `$security-review`; do not select it by semantic matching.
+- Use `security-review` only when the user explicitly invokes `$security-review` (Codex) or `/security-review` (Claude Code); do not select it by semantic matching.
 
 If no matching skill exists, follow this file and the repository itself.
 
@@ -71,7 +71,7 @@ If no matching skill exists, follow this file and the repository itself.
 - `Dockerfile` provides the development and CI runtime baseline.
 - `.github/workflows/` should call `make` targets instead of duplicating project logic inline.
 - `.agents/code_review.md` contains the detailed `/review` checklist; keep `AGENTS.md` focused on durable operating rules.
-- `.agents/skills/*/SKILL.md` contains task-specific agent workflows; keep skill routing in this file aligned with the actual local skills.
+- `.agents/skills/*/SKILL.md` contains canonical task workflows; `.claude/skills/*/SKILL.md` provides Claude Code entrypoints. Keep routing and entrypoint descriptions aligned when skills change.
 - `config/infra/` and `config/k8s/` have subtree `AGENTS.md` files with local hazards and verification rules.
 - `docs/gitops-conventions.md` defines branch, PR, issue, label, commit, and release naming conventions.
 - Keep template packaging and release manifests aligned.

@@ -4,7 +4,7 @@ description: |
   Manual-only skill.
 
   Use ONLY when the user explicitly invokes:
-  $security-review
+  $security-review (Codex) or /security-review (Claude Code)
 
   Never select this skill via semantic matching.
 ---
@@ -13,7 +13,8 @@ description: |
 
 ## Activation guard
 
-If "$security-review" is NOT present in the user request:
+If the user has not explicitly invoked this skill as `$security-review`
+(Codex) or `/security-review` (Claude Code):
 - Exit immediately
 - Do not analyze anything
 - Do not load references
@@ -121,7 +122,7 @@ If no strong match → use none
 
 ## Hard rules
 
-- Only run when "$security-review" is present
+- Only run after explicit `$security-review` or `/security-review` invocation
 - Never trigger implicitly
 - Never scan entire repo unless explicitly asked
 - Never load multiple references unless absolutely required
