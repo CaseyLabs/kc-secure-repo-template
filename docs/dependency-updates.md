@@ -57,3 +57,10 @@ For dependency update PRs:
 - run the relevant `make` target locally or rely on the matching required check
 - pay extra attention to updates for build, release, scan, and credentialed
   workflow tools
+
+Provider version changes also require `INFRA_UPDATE_LOCK=true make infra` and a
+review of `config/infra/.terraform.lock.hcl`. Ordinary infra validation verifies
+that lock without modifying it. `make update` refreshes image digests; it does
+not advance the Debian package snapshot date. Review that date explicitly when
+updating the container baseline so reproducibility does not freeze security
+updates indefinitely.

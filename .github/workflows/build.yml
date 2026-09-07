@@ -126,6 +126,8 @@ jobs:
       # quality gates on the exact commit that will be or already is tagged.
       - name: Verify tests on release target
         run: PROJECT_CFG_FILE=config/project.cfg make test
+      - name: Verify template regressions on release target
+        run: PROJECT_CFG_FILE=config/project.cfg TEST_MODE=template make test
       - name: Verify security scans on release target
         run: PROJECT_CFG_FILE=config/project.cfg make scan
       # make dist creates the archive plus SBOM, vulnerability report,

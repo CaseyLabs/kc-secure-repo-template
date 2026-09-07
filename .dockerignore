@@ -4,7 +4,6 @@
 .cache
 .tmp
 **/.terraform
-**/.terraform.lock.hcl
 **/*.tfstate
 **/*.tfstate.*
 **/*.tfplan

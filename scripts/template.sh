@@ -12,7 +12,6 @@ Dockerfile
 LICENSE.md
 Makefile
 README.md
-code_review.md
 .dockerignore
 .gitignore
 .agents
@@ -29,7 +28,6 @@ EOF
 				find "${path}" \
 					-type d \( -name dist -o -name .terraform -o -name node_modules -o -name coverage -o -name .cache -o -name .tmp \) -prune -o \
 					-type f \
-					! -name '.terraform.lock.hcl' \
 					! -name '*.tfstate' \
 					! -name '*.tfstate.*' \
 					! -name '*.tfplan' \

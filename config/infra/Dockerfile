@@ -27,4 +27,5 @@ COPY . .
 FROM dev-base AS dev
 COPY --from=terraform-cli /bin/terraform /usr/local/bin/terraform
 USER app:app
-CMD ["sh", "-eu", "-c", "project_cfg_file=${PROJECT_CFG_FILE:-config/project.cfg}; case ${project_cfg_file} in /*|./*|../*) ;; *) project_cfg_file=./${project_cfg_file} ;; esac; . ${project_cfg_file}; ( eval \"${LINT_COMMAND}\" ); ( eval \"${TEST_COMMAND}\" ); ( eval \"${BUILD_COMMAND}\" )"]
+# make infra supplies explicit validation and plan commands.
+CMD ["terraform", "version"]

@@ -22,6 +22,8 @@ same bytes when inputs match.
 - `dist/SECURITY-ANALYSIS.md`: human-readable summary of generated release
   evidence.
 - `dist/SHA256SUMS`: checksums for published integrity assets.
+- `dist/ARCHIVE-SHA256SUMS`: checksum for the template archive, retained in the
+  Actions artifact bundle.
 - `dist/template.spdx.json`: SBOM output when `ENABLE_SBOM=true`.
 - `dist/grype-report.txt`: vulnerability scan output when `ENABLE_GRYPE=true`.
 - `dist/template-manifest.txt`: generated manifest of template files.
@@ -48,7 +50,7 @@ Before publishing, the workflow:
 
 - verifies the release target commit is reachable from the repository default
   branch
-- runs `make test`
+- runs `make test` and `TEST_MODE=template make test`
 - runs `make scan`
 - runs `make dist`
 - creates the `v*` tag for manual Actions UI releases when the tag does not
@@ -56,6 +58,12 @@ Before publishing, the workflow:
 - uploads the complete `dist/` directory as an Actions artifact
 - creates GitHub artifact provenance attestations for generated release files
 - creates a GitHub Release only when one does not already exist for the tag
+
+Only `SECURITY-ANALYSIS.md`, `SHA256SUMS`, and the enabled SBOM are attached to
+the GitHub Release. The template archive and `ARCHIVE-SHA256SUMS` stay in the
+Actions artifact bundle. After extracting that bundle into the repository root,
+verify it with `sha256sum -c dist/SHA256SUMS` and
+`sha256sum -c dist/ARCHIVE-SHA256SUMS`.
 
 Existing releases are not modified. This is intentional: release assets should be
 treated as published evidence, not mutable build output.
@@ -69,9 +77,9 @@ sh scripts/template.sh manifest
 ENABLE_SBOM=false ENABLE_GRYPE=false make dist
 ```
 
-`TEST_MODE=template make test` also checks that the template manifest stays in
-sync and that repeated release archives match when SBOM and vulnerability scans
-are disabled.
+`TEST_MODE=template make test` checks packaging exclusions and repeated archive
+reproducibility in a disposable copy, with SBOM and vulnerability scans disabled.
+It exercises the production packaging code without overwriting local state.
 
 ## When To Update This Area
 

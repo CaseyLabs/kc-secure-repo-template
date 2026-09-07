@@ -103,10 +103,10 @@ make example    # Builds/tests/runs an example container
 make build    # builds the project as a container image
 make test     # run code linters, tests, and source build in the container image
 make run      # runs the container
-make stop     # stops the contaner
+make stop     # stops the container
 
 # Misc Commands
-make clean    # Removes all previously running containers
+make clean    # Removes project outputs, caches, images, and the example container
 make shell    # Opens a shell in the running container
 make status   # show the local image and running containers
 make logs     # show logs from running containers

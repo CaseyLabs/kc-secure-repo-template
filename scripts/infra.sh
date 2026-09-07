@@ -19,6 +19,15 @@ esac
 . "${project_cfg_file}"
 
 apply=${APPLY:-false}
+update_lock=${INFRA_UPDATE_LOCK:-false}
+case "${apply}:${update_lock}" in
+true:true)
+	printf '%s\n' 'Refresh and review provider locks before a separate apply run' >&2
+	exit 1
+	;;
+true:false | false:true | false:false) ;;
+*) printf '%s\n' 'APPLY and INFRA_UPDATE_LOCK must be true or false' >&2; exit 1 ;;
+esac
 infra_image='kc-secure-template-infra:local'
 infra_dockerfile='.tmp/infra/Dockerfile'
 iac_bin='terraform'
@@ -54,6 +63,7 @@ run_infra() {
 	docker run --rm --user "${docker_uid}:${docker_gid}" \
 		--cap-drop=ALL \
 		--security-opt=no-new-privileges:true \
+		-e GITHUB_TOKEN \
 		-e HOME="${docker_home}" \
 		-e XDG_CACHE_HOME="${docker_cache_home}" \
 		-v "${docker_home_source}:${docker_home}" \
@@ -68,13 +78,19 @@ printf '\n==> Run infra lint\n'
 # Format checks catch drift before validation or planning.
 run_infra "cd config/infra && ${iac_bin} fmt -check -recursive"
 
+# Lock updates are explicit maintenance, never part of ordinary validation.
+# Record both Linux architectures because macOS developers also run Linux containers.
+if [ "${update_lock}" = true ]; then
+	run_infra "cd config/infra && ${iac_bin} init -input=false -backend=false -upgrade && ${iac_bin} providers lock -platform=linux_amd64 -platform=linux_arm64"
+fi
+
 printf '\n==> Run infra tests\n'
-# Reinitialize in a clean state, then validate the configuration syntax and schema.
-run_infra "cd config/infra && rm -rf .terraform .terraform.lock.hcl && ${iac_bin} init -backend=false && ${iac_bin} validate"
+# Reuse reviewed provider checksums and initialize once before validation and planning.
+run_infra "cd config/infra && ${iac_bin} init -input=false -backend=false -lockfile=readonly && ${iac_bin} validate"
 
 printf '\n==> Run infra plan\n'
 # Create a plan file using the example variables so maintainers can review the changes.
-run_infra "cd config/infra && rm -rf .terraform .terraform.lock.hcl && ${iac_bin} init -backend=false && ${iac_bin} plan -input=false -lock=false -refresh=false -var-file=terraform.tfvars.example -out=../../${infra_plan_path}"
+run_infra "cd config/infra && ${iac_bin} plan -input=false -refresh=false -var-file=terraform.tfvars.example -out=../../${infra_plan_path}"
 
 # Only apply when the caller explicitly opts in.
 if [ "${apply}" = 'true' ]; then
