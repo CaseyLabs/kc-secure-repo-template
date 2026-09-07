@@ -23,7 +23,8 @@ tools:
   github:
     mode: local
     toolsets: [pull_requests]
-    allowed-repos: ${{ github.repository }}
+    allowed-repos:
+      - ${{ github.repository }}
     min-integrity: none
     allowed:
       - pull_request_read

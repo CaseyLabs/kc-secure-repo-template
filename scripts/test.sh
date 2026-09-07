@@ -186,6 +186,14 @@ check_workflow_metadata_policy() {
 	done
 }
 
+check_agentic_workflow_repository_scope() {
+	# gh-aw-mcpg accepts exact repository scopes as arrays. A scalar GitHub
+	# expression resolves to owner/repo at runtime and fails gateway startup.
+	grep -Fq "GH_AW_GITHUB_REPOS: '[\"\${{ github.repository }}\"]'" \
+		.github/workflows/security-pr-review.lock.yml ||
+		fail 'security reviewer must compile the current repository scope as an array'
+}
+
 # Nested `dist/` directories are usually an accidental packaging bug.
 assert_no_nested_dist_dirs() {
 	if find . -mindepth 2 -type d -name dist | grep -q .; then
@@ -990,6 +998,7 @@ template)
 	check_workflow_permissions_policy
 	check_workflow_trigger_policy
 	check_workflow_metadata_policy
+	check_agentic_workflow_repository_scope
 	assert_no_nested_dist_dirs
 	test_workflow_pull_request_target_is_rejected
 	test_workflow_issue_comment_is_rejected
