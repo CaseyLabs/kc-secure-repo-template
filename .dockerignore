@@ -1,10 +1,10 @@
 .env
 .git
 .agents
+.claude
 .cache
 .tmp
 **/.terraform
-**/.terraform.lock.hcl
 **/*.tfstate
 **/*.tfstate.*
 **/*.tfplan

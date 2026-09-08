@@ -64,14 +64,15 @@ trap cleanup EXIT INT TERM HUP
 cp "${kubeconfig_host_path}" "${kubeconfig_stage_dir}/${kubeconfig_basename}"
 chmod 600 "${kubeconfig_stage_dir}/${kubeconfig_basename}"
 
-kubectl_context_args=''
+# Preserve the context as one argument even when it contains spaces or globs.
+set --
 if [ -n "${kube_context}" ]; then
-	kubectl_context_args="--context ${kube_context}"
+	set -- --context "${kube_context}"
 fi
 
 printf '\n==> Render Kubernetes manifests for local dry-run\n'
 k8s_metadata_file=$(mktemp "${docker_tmpdir}/k8s-test-local-meta.XXXXXX")
-K8S_METADATA_FILE="${k8s_metadata_file}" sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >/tmp/k8s-test-local-render.txt
+K8S_METADATA_FILE="${k8s_metadata_file}" sh ./scripts/k8s.sh "${PROJECT_CFG_FILE}" >"${kubeconfig_stage_dir}/render.log"
 
 # shellcheck disable=SC1090
 . "${k8s_metadata_file}"
@@ -93,7 +94,6 @@ printf '\n==> Run kubectl server-side dry-run against the current cluster contex
 # `--dry-run=server` asks the API server to validate and default the resources
 # without persisting them. This requires a real kubeconfig/context and keeps the
 # local command aligned with how Kubernetes would handle the manifests.
-# shellcheck disable=SC2086
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
@@ -109,11 +109,14 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	apply \
 	--dry-run=server \
 	--validate=strict \
-	${kubectl_context_args} \
+	"$@" \
 	-o name \
-	-f "${render_file_in_workspace}" | tee /tmp/k8s-test-local-dry-run.txt
+	-f "${render_file_in_workspace}" >"${kubeconfig_stage_dir}/dry-run.txt"
 
-resource_count=$(grep -c . /tmp/k8s-test-local-dry-run.txt || true)
+# Keep Docker/kubectl failure visible: a pipeline ending in tee would hide it.
+cat "${kubeconfig_stage_dir}/dry-run.txt"
+
+resource_count=$(grep -c . "${kubeconfig_stage_dir}/dry-run.txt" || true)
 
 printf '\n==> Kubernetes local dry-run summary\n'
 printf '%s\n' "Rendered manifest: ${render_file}"

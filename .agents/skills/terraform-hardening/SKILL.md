@@ -30,7 +30,7 @@ Use this skill when working on the Terraform-backed GitHub repository hardening 
 - Treat `config/infra` as a reviewed example, not a universal policy for every repository.
 - Verify version-sensitive Terraform provider and GitHub ruleset behavior against current official documentation before changing resource semantics or documented settings.
 - Keep provider versions, lockfiles, Docker image pins, and generated-state exclusions aligned.
-- Keep required status checks aligned with real workflow job names, especially `build`, `test`, and `scan`.
+- Keep required status checks aligned with real workflow job names, using the names in `.github/workflows/` and `config/infra/variables.tf` (currently `test-code`, `test-repo`, and `scan-repo`).
 - Keep secrets and tokens out of Terraform files, examples, plans, logs, and documentation.
 - Prefer explicit variables and reviewed defaults over hidden fallbacks.
 - Pair with `workflow-validation` when changes require `make infra`, workflow alignment, or packaging-manifest checks.

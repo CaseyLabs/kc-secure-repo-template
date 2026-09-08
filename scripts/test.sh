@@ -5,7 +5,7 @@ set -eu
 # Default to testing the bundled `src/` example, but allow broader validation modes.
 mode=src
 case "${1:-}" in
-src | template | smoke)
+src | template | smoke | _regression)
 	mode=$1
 	shift
 	;;
@@ -13,46 +13,9 @@ esac
 
 PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
 
-# Enumerate the files that belong in the shipped template archive.
+# Use the production manifest rather than maintaining a second copy.
 list_template_files() {
-	export LC_ALL=C
-	cat <<'EOF' |
-AGENTS.md
-CLAUDE.md
-Dockerfile
-LICENSE.md
-Makefile
-README.md
-code_review.md
-.dockerignore
-.gitignore
-.agents
-.github
-docs
-config
-scripts
-src
-EOF
-		while IFS= read -r path; do
-			[ -n "${path}" ] || continue
-			# Expand tracked directories into files while skipping local state and generated outputs.
-			if [ -d "${path}" ]; then
-				find "${path}" \
-					-type d \( -name dist -o -name .terraform -o -name node_modules -o -name coverage -o -name .cache -o -name .tmp \) -prune -o \
-					-type f \
-					! -name '.terraform.lock.hcl' \
-					! -name '*.tfstate' \
-					! -name '*.tfstate.*' \
-					! -name '*.tfplan' \
-					! -name '*.tfvars' \
-					! -name 'crash.log' \
-					! -path 'src/app' \
-					-print
-			elif [ -e "${path}" ]; then
-				printf '%s\n' "${path}"
-			fi
-		done |
-		LC_ALL=C sort
+	sh ./scripts/template.sh files
 }
 
 # Print a consistent failure prefix and stop immediately.
@@ -61,136 +24,184 @@ fail() {
 	exit 1
 }
 
-# Extract every external GitHub Action reference together with its workflow and comment.
-list_workflow_entries() {
-	for workflow in .github/workflows/*.yml; do
-		awk -v workflow="${workflow}" '
-			/^[[:space:]]*-[[:space:]]+uses:[[:space:]]+/ || /^[[:space:]]+uses:[[:space:]]+/ {
-				ref = $0
-				sub(/^[[:space:]]*-[[:space:]]+uses:[[:space:]]+/, "", ref)
-				sub(/^[[:space:]]*uses:[[:space:]]+/, "", ref)
-				comment = ""
-				if (match(ref, /[[:space:]]+#.*$/)) {
-					comment = substr(ref, RSTART + 1)
-					sub(/^[[:space:]]+/, "", comment)
-					sub(/^#[[:space:]]*/, "", comment)
-					sub(/[[:space:]]+$/, "", comment)
-					sub(/[[:space:]]+#.*$/, "", ref)
-				}
-				sub(/[[:space:]]+$/, "", ref)
-				if (ref ~ /^(\.\/|\.\.\/)/) {
-					next
-				}
-				printf "%s\t%s\t%s\n", workflow, ref, comment
-			}
-		' "${workflow}"
-	done
+assert_ci_change_detection() {
+	name=$1
+	changed_files=$2
+	expected_test_code=$3
+	expected_test_repo=$4
+	fixture=${TMPDIR}/ci-changes-fixture
+
+	printf '%s' "${changed_files}" >"${fixture}"
+	output=$(CI_CHANGED_FILES_FILE="${fixture}" sh scripts/ci-changes.sh)
+	expected_output=$(printf 'test_code=%s\ntest_repo=%s' "${expected_test_code}" "${expected_test_repo}")
+	[ "${output}" = "${expected_output}" ] || {
+		printf '%s\n' "${output}" >&2
+		fail "${name}: unexpected detector output"
+	}
 }
 
-# Require full-SHA action pins plus a nearby reviewed tag comment.
-check_workflow_action_pins() {
-	list_workflow_entries | while IFS="$(printf '\t')" read -r workflow ref comment; do
-		case "${ref}" in
-		*/*@[0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
-			sha=${ref##*@}
-			printf '%s\n' "${sha}" | grep -Eq '^[0-9a-f]{40}$' || {
-				printf '%s must pin actions by full SHA: %s\n' "${workflow}" "${ref}" >&2
-				exit 1
-			}
-			;;
-		*)
-			printf '%s uses an invalid action ref: %s\n' "${workflow}" "${ref}" >&2
-			exit 1
-			;;
-		esac
-
-		case "${comment}" in
-		v*) ;;
-		*)
-			printf '%s must keep a reviewed release tag comment for %s\n' "${workflow}" "${ref}" >&2
-			exit 1
-			;;
-		esac
-	done
+test_ci_change_detection_rules() {
+	assert_ci_change_detection 'recognized prose' 'README.md
+LICENSE.md
+AGENTS.md
+CLAUDE.md
+code_review.md
+docs/github-ci.md
+docs/guides/setup.md
+.agents/code_review.md
+.agents/skills/example/README.md' false false
+	assert_ci_change_detection 'source, build, and script surfaces' 'src/cmd/app/main.go
+Dockerfile
+.dockerignore
+Makefile
+scripts/build.sh
+config/project.cfg
+config/lockfile.cfg
+.github/workflows/test.yml' true true
+	assert_ci_change_detection 'template configuration' 'config/k8s/chart/values.yaml' false true
+	assert_ci_change_detection 'mixed prose and template configuration' 'docs/github-ci.md
+config/infra/versions.tf' false true
+	assert_ci_change_detection 'mixed prose and source' 'README.md
+src/cmd/app/main.go' true true
+	assert_ci_change_detection 'unknown path' 'examples/demo.txt' true true
+	assert_ci_change_detection 'root Markdown is not implicitly prose' 'DESIGN.md' true true
+	assert_ci_change_detection 'executable-looking docs path' 'docs/build.sh' true true
+	assert_ci_change_detection 'empty diff' '' true true
 }
 
-check_workflow_permissions_policy() {
-	for workflow in .github/workflows/*.yml; do
-		if ! grep -Eq '^permissions:[[:space:]]*($|[{])' "${workflow}"; then
-			printf '%s: missing top-level permissions block; set explicit workflow permissions\n' "${workflow}" >&2
-			return 1
-		fi
-	done
-}
+test_ci_change_detection_output_contract() {
+	fixture=${TMPDIR}/ci-output-fixture
+	github_output=${TMPDIR}/github-output
+	printf '%s\n' 'docs/github-ci.md' >"${fixture}"
+	: >"${github_output}"
+	stdout=$(CI_CHANGED_FILES_FILE="${fixture}" GITHUB_OUTPUT="${github_output}" sh scripts/ci-changes.sh)
+	[ -z "${stdout}" ] || fail 'GITHUB_OUTPUT mode should not write decisions to stdout'
+	expected_output=$(printf 'test_code=false\ntest_repo=false')
+	actual_output=$(cat "${github_output}")
+	[ "${actual_output}" = "${expected_output}" ] || fail 'GITHUB_OUTPUT should receive both boolean decisions'
 
-check_workflow_trigger_policy() {
-	awk '
-		{
-			line = $0
-			sub(/[[:space:]]+#.*$/, "", line)
-			if (line ~ /(^|[^A-Za-z0-9_-])pull_request_target([^A-Za-z0-9_-]|$)/) {
-				printf "%s:%d: pull_request_target is not allowed in template workflows\n", FILENAME, FNR
-				found = 1
-			}
-			if (line ~ /(^|[^A-Za-z0-9_-])issue_comment([^A-Za-z0-9_-]|$)/) {
-				printf "%s:%d: issue_comment is not allowed in template workflows\n", FILENAME, FNR
-				found = 1
-			}
-			if (line ~ /(^|[^A-Za-z0-9_-])workflow_run([^A-Za-z0-9_-]|$)/) {
-				printf "%s:%d: workflow_run requires a dedicated reviewed policy exception\n", FILENAME, FNR
-				found = 1
-			}
-		}
-		END {
-			exit found ? 1 : 0
-		}
-	' .github/workflows/*.yml
-}
-
-check_workflow_metadata_policy() {
-	for workflow in .github/workflows/*.yml; do
-		awk '
-			function is_untrusted_metadata(line) {
-				return line ~ /\$\{\{[^}]*github\.event\.(issue|comment)\./ ||
-					line ~ /\$\{\{[^}]*github\.event\.pull_request\.(title|body|head_ref|head\.ref|head\.label)/ ||
-					line ~ /\$\{\{[^}]*github\.event\.workflow_run\./ ||
-					line ~ /\$\{\{[^}]*github\.head_ref/
-			}
-			{
-				line = $0
-				sub(/[[:space:]]+#.*$/, "", line)
-				indent = match($0, /[^ ]/) ? RSTART - 1 : 0
-				if (in_run && indent <= run_indent && line !~ /^[[:space:]]*$/) {
-					in_run = 0
-				}
-				if (in_run && is_untrusted_metadata(line)) {
-					printf "%s:%d: untrusted github.event metadata must not be interpolated directly into run steps\n", FILENAME, FNR
-					found = 1
-				}
-				if (line ~ /^[[:space:]]*(-[[:space:]]*)?run:[[:space:]]*/) {
-					run_indent = indent
-					if (is_untrusted_metadata(line)) {
-						printf "%s:%d: untrusted github.event metadata must not be interpolated directly into run steps\n", FILENAME, FNR
-						found = 1
-					}
-					if (line ~ /^[[:space:]]*(-[[:space:]]*)?run:[[:space:]]*[>|]/) {
-						in_run = 1
-					}
-				}
-			}
-			END {
-				exit found ? 1 : 0
-			}
-		' "${workflow}" || return 1
-	done
-}
-
-# Nested `dist/` directories are usually an accidental packaging bug.
-assert_no_nested_dist_dirs() {
-	if find . -mindepth 2 -type d -name dist | grep -q .; then
-		find . -mindepth 2 -type d -name dist -print >&2
-		fail 'dist directories must only exist at the repository root'
+	if CI_CHANGED_FILES_FILE="${TMPDIR}/missing-ci-fixture" sh scripts/ci-changes.sh >${TMPDIR}/missing-ci-stdout 2>${TMPDIR}/missing-ci-stderr; then
+		fail 'a missing changed-files fixture should fail detection'
 	fi
+	grep -q 'missing changed-files fixture' ${TMPDIR}/missing-ci-stderr || fail 'missing fixture failure should be explicit'
+
+	output=$(GITHUB_EVENT_NAME=push sh scripts/ci-changes.sh)
+	[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'non-PR events should run both jobs'
+	output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA=missing-history sh scripts/ci-changes.sh)
+	[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'missing PR history should run both jobs'
+	fake_bin=${TMPDIR}/ci-failed-diff-bin
+	mkdir "${fake_bin}"
+	cat >"${fake_bin}/git" <<'EOF'
+#!/bin/sh
+case "${1:-}" in
+rev-parse) exit 0 ;;
+-c) exit 1 ;;
+*) exit 1 ;;
+esac
+EOF
+	chmod +x "${fake_bin}/git"
+	output=$(PATH="${fake_bin}:${PATH}" GITHUB_EVENT_NAME=pull_request GITHUB_SHA=synthetic-merge sh scripts/ci-changes.sh)
+	[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'failed diffs should run both jobs'
+
+	grep -Fq "outputs.test_code != 'false'" .github/workflows/test.yml || fail 'test-code should run for missing or malformed detector output'
+	grep -Fq "outputs.test_repo != 'false'" .github/workflows/test.yml || fail 'test-repo should run for missing or malformed detector output'
+}
+
+test_ci_change_detection_git_history() {
+	root_dir=$(pwd)
+	history_dir=$(mktemp -d)
+
+	if ! (
+		cd "${history_dir}"
+		mkdir home
+		export HOME="${history_dir}/home"
+		git init -q -b main source
+		cd source
+		git config user.name 'CI Detector Test'
+		git config user.email 'ci-detector@example.invalid'
+		mkdir -p src docs
+		printf '%s\n' 'package main' >src/app.go
+		printf '%s\n' 'package main' >src/remove.go
+		printf '%s\n' '# Readme' >README.md
+		git add .
+		git commit -q -m initial
+
+		git checkout -q -b feature
+		printf '%s\n' '# Guide' >docs/guide.md
+		git add docs/guide.md
+		git commit -q -m docs
+
+		git checkout -q main
+		printf '%s\n' 'package main // base advanced' >src/app.go
+		git commit -qam 'advance base independently'
+		git merge -q --no-ff --no-edit feature
+		git branch synthetic-merge
+		merge_sha=$(git rev-parse HEAD)
+
+		cd ..
+		git clone -q --depth=2 --branch synthetic-merge "file://${history_dir}/source" shallow
+		cd shallow
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${merge_sha}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=false\ntest_repo=false')" ] || {
+			printf '%s\n' "${output}" >&2
+			fail 'depth-two synthetic merge should compare its first parent with the tested tree'
+		}
+
+		cd "${history_dir}/source"
+		git checkout -q -b rename-case "${merge_sha}^1"
+		mkdir -p docs
+		git mv src/app.go docs/app.md
+		git commit -q -m 'move source into docs'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit rename-case
+		rename_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${rename_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'cross-category renames should classify both removed and added paths'
+
+		git checkout -q -b deletion-case "${rename_merge}"
+		git rm -q src/remove.go
+		git commit -q -m 'delete source'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit deletion-case
+		deletion_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${deletion_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'source deletions should run both jobs'
+
+		git checkout -q -b quoted-case "${deletion_merge}"
+		quoted_path=$(printf 'docs/guide\tname.md')
+		printf '%s\n' '# Quoted path' >"${quoted_path}"
+		git add "${quoted_path}"
+		git commit -q -m 'add quoted pathname'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit quoted-case
+		quoted_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${quoted_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'quoted pathnames should run both jobs'
+
+		git checkout -q -b executable-docs-case "${quoted_merge}"
+		printf '%s\n' '#!/bin/sh' >docs/build.sh
+		chmod +x docs/build.sh
+		git add docs/build.sh
+		git commit -q -m 'add executable below docs'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit executable-docs-case
+		executable_docs_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${executable_docs_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'executable files below docs should run both jobs'
+
+		git checkout -q -b prose-deletion-case "${executable_docs_merge}"
+		git rm -q README.md
+		git commit -q -m 'delete recognized prose'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit prose-deletion-case
+		prose_deletion_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${prose_deletion_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=false\ntest_repo=false')" ] || fail 'recognized prose deletions should skip both jobs'
+	); then
+		rm -rf "${history_dir}"
+		return 1
+	fi
+	rm -rf "${history_dir}"
 }
 
 test_workflow_pull_request_target_is_rejected() {
@@ -199,7 +210,10 @@ test_workflow_pull_request_target_is_rejected() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		cat >.github/workflows/unsafe.yml <<'EOF'
 name: unsafe
 on:
@@ -210,10 +224,10 @@ jobs:
     steps:
       - run: echo unsafe
 EOF
-		if check_workflow_trigger_policy >/tmp/template-workflow-trigger-policy.txt 2>&1; then
+		if check_workflow_trigger_policy >${TMPDIR}/template-workflow-trigger-policy.txt 2>&1; then
 			fail 'workflow trigger policy should reject pull_request_target'
 		fi
-		grep -q 'pull_request_target is not allowed' /tmp/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report pull_request_target'
+		grep -q 'pull_request_target is not allowed' ${TMPDIR}/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report pull_request_target'
 	)
 	rm -rf "${workdir}"
 }
@@ -224,7 +238,10 @@ test_workflow_issue_comment_is_rejected() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		cat >.github/workflows/unsafe.yml <<'EOF'
 name: unsafe
 on:
@@ -239,10 +256,10 @@ jobs:
     steps:
       - run: echo unsafe
 EOF
-		if check_workflow_trigger_policy >/tmp/template-workflow-trigger-policy.txt 2>&1; then
+		if check_workflow_trigger_policy >${TMPDIR}/template-workflow-trigger-policy.txt 2>&1; then
 			fail 'workflow trigger policy should reject issue_comment'
 		fi
-		grep -q 'issue_comment is not allowed' /tmp/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report issue_comment'
+		grep -q 'issue_comment is not allowed' ${TMPDIR}/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report issue_comment'
 	)
 	rm -rf "${workdir}"
 }
@@ -253,7 +270,10 @@ test_workflow_run_is_rejected_without_policy_exception() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		cat >.github/workflows/unsafe.yml <<'EOF'
 name: unsafe
 on:
@@ -270,10 +290,10 @@ jobs:
     steps:
       - run: echo unsafe
 EOF
-		if check_workflow_trigger_policy >/tmp/template-workflow-trigger-policy.txt 2>&1; then
+		if check_workflow_trigger_policy >${TMPDIR}/template-workflow-trigger-policy.txt 2>&1; then
 			fail 'workflow trigger policy should reject workflow_run'
 		fi
-		grep -q 'workflow_run requires a dedicated reviewed policy exception' /tmp/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report workflow_run'
+		grep -q 'workflow_run requires a dedicated reviewed policy exception' ${TMPDIR}/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report workflow_run'
 	)
 	rm -rf "${workdir}"
 }
@@ -284,7 +304,10 @@ test_workflow_missing_permissions_is_rejected() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		cat >.github/workflows/unsafe.yml <<'EOF'
 name: unsafe
 on:
@@ -295,10 +318,10 @@ jobs:
     steps:
       - run: echo unsafe
 EOF
-		if check_workflow_permissions_policy >/tmp/template-workflow-permissions-policy.txt 2>&1; then
+		if check_workflow_permissions_policy >${TMPDIR}/template-workflow-permissions-policy.txt 2>&1; then
 			fail 'workflow permissions policy should reject missing permissions'
 		fi
-		grep -q 'missing top-level permissions block' /tmp/template-workflow-permissions-policy.txt || fail 'workflow permissions policy should report missing permissions'
+		grep -q 'missing top-level permissions block' ${TMPDIR}/template-workflow-permissions-policy.txt || fail 'workflow permissions policy should report missing permissions'
 	)
 	rm -rf "${workdir}"
 }
@@ -309,7 +332,10 @@ test_workflow_metadata_interpolation_is_rejected() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		cat >.github/workflows/unsafe.yml <<'EOF'
 name: unsafe
 on:
@@ -323,55 +349,21 @@ jobs:
       - run: |
           echo "${{ github.event.pull_request.title }}"
 EOF
-		if check_workflow_metadata_policy >/tmp/template-workflow-metadata-policy.txt 2>&1; then
+		if check_workflow_metadata_policy >${TMPDIR}/template-workflow-metadata-policy.txt 2>&1; then
 			fail 'workflow metadata policy should reject unsafe run interpolation'
 		fi
-		grep -q 'untrusted github.event metadata must not be interpolated directly into run steps' /tmp/template-workflow-metadata-policy.txt || fail 'workflow metadata policy should report unsafe metadata interpolation'
+		grep -q 'untrusted github.event metadata must not be interpolated directly into run steps' ${TMPDIR}/template-workflow-metadata-policy.txt || fail 'workflow metadata policy should report unsafe metadata interpolation'
 	)
 	rm -rf "${workdir}"
-}
-
-assert_ci_change_detection() {
-	name=$1
-	changed_files=$2
-	expected_test_code=$3
-	expected_test_repo=$4
-	fixture=$(mktemp)
-
-	printf '%s\n' "${changed_files}" >"${fixture}"
-	output=$(CI_CHANGED_FILES_FILE="${fixture}" sh scripts/ci-changes.sh)
-	rm -f "${fixture}"
-
-	printf '%s\n' "${output}" | grep -qx "test_code=${expected_test_code}" || {
-		printf '%s\n' "${output}" >&2
-		fail "${name}: unexpected test_code decision"
-	}
-	printf '%s\n' "${output}" | grep -qx "test_repo=${expected_test_repo}" || {
-		printf '%s\n' "${output}" >&2
-		fail "${name}: unexpected test_repo decision"
-	}
-}
-
-test_ci_change_detection_rules() {
-	assert_ci_change_detection 'docs-only change detection' 'docs/github-ci.md
-README.md
-.agents/skills/example/SKILL.md
-AGENTS.md' false false
-
-	assert_ci_change_detection 'source change detection' 'src/cmd/app/main.go' true true
-
-	assert_ci_change_detection 'template config change detection' 'config/k8s/chart/values.yaml' false true
-
-	assert_ci_change_detection 'empty diff change detection' '' true true
 }
 
 test_local_state_is_not_packaged() {
 	mkdir -p config/infra src
 	: >config/infra/terraform.tfvars
 	: >src/app
-	sh ./scripts/template.sh files >/tmp/template-files-local-state.txt
-	! grep -qx 'config/infra/terraform.tfvars' /tmp/template-files-local-state.txt || fail 'template files should exclude local Terraform variable files'
-	! grep -qx 'src/app' /tmp/template-files-local-state.txt || fail 'template files should exclude the generated example binary'
+	sh ./scripts/template.sh files >${TMPDIR}/template-files-local-state.txt
+	! grep -qx 'config/infra/terraform.tfvars' ${TMPDIR}/template-files-local-state.txt || fail 'template files should exclude local Terraform variable files'
+	! grep -qx 'src/app' ${TMPDIR}/template-files-local-state.txt || fail 'template files should exclude the generated example binary'
 	rm -f config/infra/terraform.tfvars src/app
 }
 
@@ -389,7 +381,10 @@ EOF
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		sed \
 			-e "/^DEV_K8S_HELM_IMAGE=/d" \
 			-e "/^DEV_K8S_KUBECTL_IMAGE=/d" \
@@ -410,7 +405,7 @@ EOF
 			-e "s#^DEV_SCAN_GRYPE_IMAGE=.*#DEV_SCAN_GRYPE_IMAGE='${DEV_SCAN_GRYPE_IMAGE_LOCK}'#" \
 			-e "s#^DEV_RENOVATE_IMAGE=.*#DEV_RENOVATE_IMAGE='${DEV_RENOVATE_IMAGE_LOCK}'#" \
 			config/project.cfg >config/project.cfg.test
-		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test >/tmp/template-update-optional-k8s.txt
+		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test >${TMPDIR}/template-update-optional-k8s.txt
 		grep -q "^DEV_K8S_HELM_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S Helm lock when the optional setting is absent'
 		grep -q "^DEV_K8S_KUBECTL_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S kubectl lock when the optional setting is absent'
 	)
@@ -423,7 +418,10 @@ test_optional_k8s_scan_skip() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		rm -rf config/k8s
 		mkdir -p fake-bin
 		cat >fake-bin/docker <<'EOF'
@@ -441,9 +439,9 @@ EOF
 			-e "/^K8S_IMAGE_REPOSITORY=/d" \
 			-e "/^K8S_IMAGE_TAG=/d" \
 			config/project.cfg >config/project.cfg.test
-		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >/tmp/template-scan-optional-k8s.txt
-		grep -q 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan' /tmp/template-scan-optional-k8s.txt || fail 'scan should report when it skips the optional Kubernetes scaffold'
-		grep -q 'No rendered Kubernetes manifests available; skipping Trivy config scan' /tmp/template-scan-optional-k8s.txt || fail 'scan should skip the Kubernetes Trivy pass when nothing was rendered'
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-optional-k8s.txt
+		grep -q 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan' ${TMPDIR}/template-scan-optional-k8s.txt || fail 'scan should report when it skips the optional Kubernetes scaffold'
+		grep -q 'No rendered Kubernetes manifests available; skipping Trivy config scan' ${TMPDIR}/template-scan-optional-k8s.txt || fail 'scan should skip the Kubernetes Trivy pass when nothing was rendered'
 	)
 	rm -rf "${workdir}"
 }
@@ -454,7 +452,10 @@ test_k8s_shell_inputs_are_not_executed() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		mkdir -p fake-bin
 		cat >fake-bin/docker <<'EOF'
 #!/bin/sh
@@ -545,20 +546,20 @@ template)
 esac
 EOF
 		chmod +x fake-bin/docker fake-bin/fake-helm
-		cat >/tmp/template-k8s-shell-values.yaml <<'EOF'
+		cat >${TMPDIR}/template-k8s-shell-values.yaml <<'EOF'
 container:
   port: 8080
 EOF
 		cat >config/project.cfg.test <<'EOF'
 . ./config/project.cfg
 DEV_K8S_HELM_IMAGE='fake-helm'
-K8S_NAME_OVERRIDE='safe; touch /tmp/template-k8s-shell-proof #'
-K8S_VALUES_FILE='/tmp/template-k8s-shell-values.yaml'
+K8S_NAME_OVERRIDE="safe; touch ${TMPDIR}/template-k8s-shell-proof #"
+K8S_VALUES_FILE="${TMPDIR}/template-k8s-shell-values.yaml"
 EOF
-		rm -f /tmp/template-k8s-shell-proof
-		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/k8s.sh config/project.cfg.test >/tmp/template-k8s-shell-safe.txt
-		[ ! -f /tmp/template-k8s-shell-proof ] || fail 'k8s should not execute shell metacharacters from project config values'
-		grep -F -- 'nameOverride=safe; touch /tmp/template-k8s-shell-proof #' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'k8s should pass unsafe-looking overrides as literal Helm arguments'
+		rm -f ${TMPDIR}/template-k8s-shell-proof
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/k8s.sh config/project.cfg.test >${TMPDIR}/template-k8s-shell-safe.txt
+		[ ! -f ${TMPDIR}/template-k8s-shell-proof ] || fail 'k8s should not execute shell metacharacters from project config values'
+		grep -F -- "nameOverride=safe; touch ${TMPDIR}/template-k8s-shell-proof #" .tmp/k8s/rendered/kc-secure-template.yaml || fail 'k8s should pass unsafe-looking overrides as literal Helm arguments'
 	)
 	rm -rf "${workdir}"
 }
@@ -569,7 +570,10 @@ test_k8s_render_file_scan_path() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		mkdir -p fake-bin
 		cat >fake-bin/docker <<'EOF'
 #!/bin/sh
@@ -664,7 +668,7 @@ K8S_RENDER_DIR='out/k8s/rendered'
 K8S_RELEASE_NAME='custom-release'
 EOF
 		PATH="${workdir}/fake-bin:${PATH}" \
-			sh ./scripts/scan.sh config/project.cfg.test >/tmp/template-scan-render-dir.txt
+			sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-render-dir.txt
 		grep -F -- '/tmp/k8s-scan-manifest.' docker.log || fail 'scan should stage the rendered Kubernetes manifest into the mounted temp directory'
 		grep -F -- '/tmp/k8s-scan-manifest.' docker.log | grep -F -- 'custom-release.yaml' >/dev/null || fail 'scan should pass the rendered Kubernetes manifest basename to Trivy'
 		! grep -F -- '/workspace/out/k8s/rendered' docker.log >/dev/null 2>&1 || fail 'scan should not assume the render directory is mounted inside the scanner container'
@@ -679,153 +683,10 @@ K8S_RELEASE_NAME=''
 K8S_RENDER_DIR='${absolute_render_dir}'
 EOF
 		PATH="${workdir}/fake-bin:${PATH}" \
-			sh ./scripts/scan.sh config/project.cfg.absolute >/tmp/template-scan-absolute-render-dir.txt
+			sh ./scripts/scan.sh config/project.cfg.absolute >${TMPDIR}/template-scan-absolute-render-dir.txt
 		[ -f "${absolute_render_dir}/derived-app.yaml" ] || fail 'scan should rely on the manifest path rendered by k8s.sh when K8S_RELEASE_NAME is omitted'
 		grep -F -- '/tmp/k8s-scan-manifest.' docker.log | grep -F -- 'derived-app.yaml' >/dev/null || fail 'scan should stage the derived release-name manifest for Trivy'
 		! grep -F -- "${absolute_render_dir}" docker.log >/dev/null 2>&1 || fail 'scan should not pass an absolute host render directory directly into the scanner container'
-	)
-	rm -rf "${workdir}"
-}
-
-test_k8s_chart_packaging_uses_project_defaults() {
-	workdir=$(mktemp -d)
-	root_dir=$(pwd)
-
-	(
-		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
-		mkdir -p fake-bin
-		cat >fake-bin/docker <<'EOF'
-#!/bin/sh
-set -eu
-
-if [ "${1:-}" = "run" ]; then
-	shift
-fi
-
-image=''
-while [ "$#" -gt 0 ]; do
-	case "$1" in
-	--rm | --cap-drop=* | --security-opt=*)
-		shift
-		continue
-		;;
-	-e | -v | -w | --user)
-		shift
-		[ "$#" -gt 0 ] && shift
-		continue
-		;;
-	*)
-		image=$1
-		shift
-		break
-		;;
-	esac
-done
-
-[ -n "${image}" ] || exit 1
-case "${image}" in
-*helm*)
-	image="$(pwd)/fake-bin/helm"
-	;;
-esac
-PATH="$(pwd)/fake-bin:${PATH}" "${image}" "$@"
-EOF
-		cat >fake-bin/helm <<'EOF'
-#!/bin/sh
-set -eu
-
-yaml_value() {
-	file=$1
-	key=$2
-	awk -F': ' -v key="${key}" '$1 == key { print $2; exit }' "${file}"
-}
-
-image_value() {
-	file=$1
-	key=$2
-	awk -v key="${key}" '
-		/^image:/ { in_image = 1; next }
-		in_image && /^[^[:space:]]/ { in_image = 0 }
-		in_image && $1 == key ":" { print $2; exit }
-	' "${file}"
-}
-
-set_string_value() {
-	key=$1
-	shift
-
-	while [ "$#" -gt 0 ]; do
-		case "$1" in
-		--set-string)
-			shift
-			[ "$#" -gt 0 ] || break
-			case "$1" in
-			"${key}"=*)
-				printf '%s\n' "${1#*=}"
-				return 0
-				;;
-			esac
-			;;
-		esac
-		shift
-	done
-
-	return 1
-}
-
-case "$1" in
-lint)
-	chart=$2
-	[ -f "${chart}/Chart.yaml" ] || exit 1
-	;;
-	template)
-		release=$2
-		chart=$3
-		printf 'release: %s\n' "${release}"
-		printf 'chartName: %s\n' "$(yaml_value "${chart}/Chart.yaml" "name")"
-		printf 'nameOverride: %s\n' "$(set_string_value "nameOverride" "$@" || true)"
-		printf 'imageRepository: %s\n' "$(image_value "${chart}/values.yaml" "repository")"
-		printf 'imageTag: %s\n' "$(image_value "${chart}/values.yaml" "tag")"
-		;;
-package)
-	chart=$2
-	shift 2
-	destination=''
-	while [ "$#" -gt 0 ]; do
-		if [ "$1" = "--destination" ]; then
-			shift
-			destination=$1
-			break
-		fi
-		shift
-	done
-	[ -n "${destination}" ] || exit 1
-	mkdir -p "${destination}"
-	chart_name=$(yaml_value "${chart}/Chart.yaml" "name")
-	chart_version=$(yaml_value "${chart}/Chart.yaml" "version")
-	tar -C "$(dirname "${chart}")" -czf "${destination}/${chart_name}-${chart_version}.tgz" "$(basename "${chart}")"
-	;;
-	*)
-		exit 1
-		;;
-esac
-EOF
-		chmod +x fake-bin/docker fake-bin/helm
-		cat >config/project.cfg.test <<'EOF'
-. ./config/project.cfg
-PROJECT_NAME='Derived_App'
-PROJECT_IMAGE='registry.example.com:5000/derived-app:local'
-DEV_K8S_HELM_IMAGE='fake/helm:latest'
-EOF
-		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/k8s.sh config/project.cfg.test >/tmp/template-k8s-staged.txt
-		grep -q '^chartName: derived-app$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should use the project-specific chart metadata'
-		grep -q '^nameOverride: derived-app$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should derive nameOverride from an overridden PROJECT_NAME in layered configs'
-		grep -q '^imageRepository: registry.example.com:5000/derived-app$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should derive the repository from PROJECT_IMAGE without the tag'
-		grep -q '^imageTag: local$' .tmp/k8s/rendered/derived-app.yaml || fail 'k8s render should derive the tag from PROJECT_IMAGE in layered configs when K8S_IMAGE_TAG is unset'
-		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/Chart.yaml | grep -q '^name: derived-app$' || fail 'packaged chart should use the project-specific chart name'
-		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/values.yaml | grep -q '^  repository: registry.example.com:5000/derived-app$' || fail 'packaged chart values should use the PROJECT_IMAGE-derived repository in layered configs'
-		tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz chart/values.yaml | grep -q '^  tag: local$' || fail 'packaged chart values should use the PROJECT_IMAGE-derived tag in layered configs'
 	)
 	rm -rf "${workdir}"
 }
@@ -836,7 +697,10 @@ test_k8s_test_local_uses_kubeconfig_and_server_dry_run() {
 
 	(
 		cd "${workdir}"
-		tar -C "${root_dir}" -cf - . | tar -xf -
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
 		mkdir -p fake-bin fake-kubeconfig config/k8s .tmp/k8s/rendered scripts
 		cat >fake-bin/docker <<'EOF'
 #!/bin/sh
@@ -844,6 +708,7 @@ printf '%s\n' "$*" >>docker.log
 
 case "$1" in
 run)
+	[ "${FAKE_KUBECTL_FAIL:-false}" != true ] || exit 42
 	printf '%s\n' 'service/test-svc'
 	exit 0
 	;;
@@ -907,15 +772,15 @@ EOF
 		PATH="${workdir}/fake-bin:${PATH}" \
 			K8S_TEST_LOCAL_KUBECONFIG="${workdir}/fake-kubeconfig/config" \
 			K8S_TEST_LOCAL_CONTEXT='kind-local' \
-			sh ./scripts/k8s-test-local.sh config/project.cfg >/tmp/template-k8s-test-local.txt
+			sh ./scripts/k8s-test-local.sh config/project.cfg >${TMPDIR}/template-k8s-test-local.txt
 		! grep -F -- ' build ' docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not build a repo-controlled kubectl image'
 		grep -F -- 'bitnami/kubectl:latest' docker.log || fail 'k8s-test-local should run the configured kubectl image'
 		grep -F -- '--dry-run=server' docker.log || fail 'k8s-test-local should use kubectl server-side dry-run'
 		grep -F -- "--context kind-local" docker.log || fail 'k8s-test-local should pass the configured Kubernetes context'
 		! grep -F -- "${workdir}/fake-kubeconfig:/tmp/k8s-test-kubeconfig:ro" docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not mount the original kubeconfig directory'
-		grep -F -- '/tmp/tmp.' docker.log || fail 'k8s-test-local should mount a staged kubeconfig directory'
+		grep -F -- '/kubeconfig.' docker.log || fail 'k8s-test-local should mount a staged kubeconfig directory'
 		grep -F -- '/tmp/k8s-test-local-manifest.' docker.log | grep -F -- 'kc-secure-template.yaml' >/dev/null || fail 'k8s-test-local should stage the rendered manifest into the mounted temp directory'
-		grep -q 'Resources checked by server-side dry-run: 1' /tmp/template-k8s-test-local.txt || fail 'k8s-test-local should report the dry-run resource count'
+		grep -q 'Resources checked by server-side dry-run: 1' ${TMPDIR}/template-k8s-test-local.txt || fail 'k8s-test-local should report the dry-run resource count'
 		: >docker.log
 		external_render_dir=$(mktemp -d "${workdir}/external-render.XXXXXX")
 		cat >config/project.cfg.absolute <<EOF
@@ -927,10 +792,48 @@ K8S_RENDER_DIR='${external_render_dir}'
 EOF
 		PATH="${workdir}/fake-bin:${PATH}" \
 			K8S_TEST_LOCAL_KUBECONFIG="${workdir}/fake-kubeconfig/config" \
-			sh ./scripts/k8s-test-local.sh config/project.cfg.absolute >/tmp/template-k8s-test-local-absolute.txt
+			sh ./scripts/k8s-test-local.sh config/project.cfg.absolute >${TMPDIR}/template-k8s-test-local-absolute.txt
 		[ -f "${external_render_dir}/derived-app.yaml" ] || fail 'k8s-test-local should use the manifest path rendered by k8s.sh when K8S_RELEASE_NAME is omitted'
 		grep -F -- '/tmp/k8s-test-local-manifest.' docker.log | grep -F -- 'derived-app.yaml' >/dev/null || fail 'k8s-test-local should stage the derived release-name manifest for kubectl'
 		! grep -F -- "${external_render_dir}" docker.log >/dev/null 2>&1 || fail 'k8s-test-local should not pass an absolute host render directory directly into the kubectl container'
+		if PATH="${workdir}/fake-bin:${PATH}" FAKE_KUBECTL_FAIL=true \
+			K8S_TEST_LOCAL_KUBECONFIG="${workdir}/fake-kubeconfig/config" \
+			sh ./scripts/k8s-test-local.sh config/project.cfg >"${TMPDIR}/failed-dry-run.txt" 2>&1; then
+			fail 'kubectl failure must fail the local validation command'
+		fi
+	)
+	rm -rf "${workdir}"
+}
+
+test_infra_preserves_lock_and_forwards_token() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+# Record argument names only; no real credential is used by this fixture.
+printf '%s\n' "$*" >>docker.log
+EOF
+		chmod +x fake-bin/docker
+		PATH="${workdir}/fake-bin:${PATH}" GITHUB_TOKEN=fixture-token \
+			sh scripts/infra.sh >infra.log
+		grep -q -- '-e GITHUB_TOKEN' docker.log || fail 'infra must forward the token by environment variable name'
+		! grep -q 'fixture-token' docker.log || fail 'infra must not place token values in command arguments'
+		! grep -q 'rm -rf .*terraform.lock.hcl' docker.log || fail 'infra must preserve provider checksums'
+		! grep -q 'apply -input' docker.log || fail 'infra must not apply by default'
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" INFRA_UPDATE_LOCK=true \
+			sh scripts/infra.sh >infra.log
+		grep -q 'providers lock -platform=linux_amd64 -platform=linux_arm64' docker.log || fail 'explicit lock maintenance must cover both container architectures'
+		if PATH="${workdir}/fake-bin:${PATH}" INFRA_UPDATE_LOCK=true APPLY=true \
+			sh scripts/infra.sh >infra.log 2>&1; then
+			fail 'provider upgrades and apply must require separate runs'
+		fi
 	)
 	rm -rf "${workdir}"
 }
@@ -1002,78 +905,76 @@ src)
 	printf '%s\n' 'Workspace: src'
 	printf '%s\n' 'Results: lint passed, tests passed, build passed'
 	;;
-template)
-	# Validate that the template wiring, documentation, and release outputs stay in sync.
-	find scripts -type f -name '*.sh' -print | LC_ALL=C sort | while IFS= read -r path; do
-		sh -n "${path}"
-	done
-	[ ! -d scripts/lib ] || fail 'scripts/lib should not exist'
-	. ./config/lockfile.cfg
-	make help >/tmp/template-help.txt
-	grep -q 'Available targets' /tmp/template-help.txt || fail 'make help output is missing the target list'
-	make -n build | grep -q 'sh scripts/build.sh "' || fail 'make build should call scripts/build.sh'
-	make -n test | grep -q 'sh scripts/test.sh "' || fail 'make test should call scripts/test.sh'
-	make -n scan | grep -q 'sh scripts/scan.sh "' || fail 'make scan should call scripts/scan.sh'
-	make -n k8s | grep -q 'sh scripts/k8s.sh "' || fail 'make k8s should call scripts/k8s.sh'
-	make -n k8s-test-local | grep -q 'sh scripts/k8s-test-local.sh "' || fail 'make k8s-test-local should call scripts/k8s-test-local.sh'
-	make -n dist | grep -q 'sh scripts/dist.sh "' || fail 'make dist should call scripts/dist.sh'
-	! grep -qx 'config/project.cfg' .dockerignore || fail '.dockerignore should not exclude tracked config/project.cfg'
-	! grep -qx 'config/project.cfg' .gitignore || fail '.gitignore should not exclude tracked config/project.cfg'
-	check_workflow_action_pins
-	check_workflow_permissions_policy
-	check_workflow_trigger_policy
-	check_workflow_metadata_policy
-	assert_no_nested_dist_dirs
-	test_workflow_pull_request_target_is_rejected
-	test_workflow_issue_comment_is_rejected
-	test_workflow_run_is_rejected_without_policy_exception
-	test_workflow_missing_permissions_is_rejected
-	test_workflow_metadata_interpolation_is_rejected
-	test_ci_change_detection_rules
-	test_local_state_is_not_packaged
-	test_optional_k8s_update_compat
-	test_optional_k8s_scan_skip
-	test_k8s_shell_inputs_are_not_executed
-	test_k8s_render_file_scan_path
-	test_k8s_chart_packaging_uses_project_defaults
-	test_k8s_test_local_uses_kubeconfig_and_server_dry_run
-	rm -rf dist
-	# `make example` should exercise the demo without leaving release artifacts behind.
-	PROJECT_CFG_FILE=config/project.cfg make example >/tmp/template-example.txt
-	[ ! -d dist ] || fail 'make example should not create root dist'
-	grep -q 'Run secret scan' /tmp/template-example.txt || fail 'make example should run the security scan'
-	grep -q 'Run GitHub Actions security scan' /tmp/template-example.txt || fail 'make example should run the GitHub Actions security scan'
-	assert_no_nested_dist_dirs
-	rm -rf .tmp
-	# Infra validation should also avoid writing release outputs.
-	PROJECT_CFG_FILE=config/project.cfg make infra >/tmp/template-infra.txt
-	[ ! -d dist ] || fail 'make infra should not create root dist'
-	assert_no_nested_dist_dirs
-	PROJECT_CFG_FILE=config/project.cfg make k8s >/tmp/template-k8s.txt
-	grep -q 'Rendered manifest:' /tmp/template-k8s.txt || fail 'make k8s should render the bundled Helm chart'
+template | smoke | _regression)
+	# All destructive fixtures and generated outputs live in a disposable copy.
+	# In particular, never truncate a developer's terraform.tfvars or delete their .tmp.
+	suite_dir=$(mktemp -d)
+	trap 'rm -rf "${suite_dir}"' EXIT
+	trap 'exit 1' HUP INT TERM
+	list_template_files >"${suite_dir}/files.txt"
+	mkdir "${suite_dir}/repo" "${suite_dir}/tmp"
+	tar -cf "${suite_dir}/repo.tar" -T "${suite_dir}/files.txt"
+	tar -xf "${suite_dir}/repo.tar" -C "${suite_dir}/repo"
+	cd "${suite_dir}/repo"
+	export TMPDIR="${suite_dir}/tmp"
+	if [ "${mode}" = _regression ]; then
+		. ./scripts/workflow-policy.sh
+		. ./config/lockfile.cfg
+		test_workflow_pull_request_target_is_rejected
+		test_workflow_issue_comment_is_rejected
+		test_workflow_run_is_rejected_without_policy_exception
+		test_workflow_missing_permissions_is_rejected
+		test_workflow_metadata_interpolation_is_rejected
+		test_ci_change_detection_rules
+		test_ci_change_detection_output_contract
+		test_ci_change_detection_git_history
+		test_local_state_is_not_packaged
+		test_infra_preserves_lock_and_forwards_token
+		test_optional_k8s_update_compat
+		test_optional_k8s_scan_skip
+		test_k8s_shell_inputs_are_not_executed
+		test_k8s_render_file_scan_path
+		test_k8s_test_local_uses_kubeconfig_and_server_dry_run
+		exit 0
+	fi
+	# Exercise the shipped build/test code unchanged with the current image locks.
+	make build
+	make test TEST_MODE=src
+	. ./config/project.cfg
+	case "${PROJECT_NAME}" in
+	*-dev) regression_image="${PROJECT_NAME%-dev}-example:local" ;;
+	*) regression_image="${PROJECT_NAME}-example:local" ;;
+	esac
+	# Shell regression fixtures run nonroot without Docker socket or network access.
+	docker run --rm --user "$(id -u):$(id -g)" --network=none \
+		--cap-drop=ALL --security-opt=no-new-privileges:true \
+		-v "$(pwd):/workspace:ro" -w /workspace \
+		"${regression_image}" sh scripts/test.sh _regression
+	GITHUB_TOKEN= make infra APPLY=false INFRA_UPDATE_LOCK=false
+	PROJECT_CFG_FILE=config/project.cfg make k8s >${TMPDIR}/template-k8s.txt
 	[ -f .tmp/k8s/rendered/kc-secure-template.yaml ] || fail 'make k8s should write a rendered Kubernetes manifest'
 	grep -q 'app.kubernetes.io/name: kc-secure-template' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should derive the chart app name from PROJECT_NAME by default'
 	find .tmp/k8s/package -maxdepth 1 -type f -name '*.tgz' | grep -q . || fail 'make k8s should package the bundled Helm chart'
-	cat >/tmp/template-k8s-values.yaml <<'EOF'
+	cat >${TMPDIR}/template-k8s-values.yaml <<'EOF'
 container:
   port: 8080
 service:
   port: 80
 EOF
-	PROJECT_CFG_FILE=config/project.cfg K8S_VALUES_FILE=/tmp/template-k8s-values.yaml make k8s >/tmp/template-k8s-custom-port.txt
+	PROJECT_CFG_FILE=config/project.cfg K8S_VALUES_FILE=${TMPDIR}/template-k8s-values.yaml make k8s >${TMPDIR}/template-k8s-custom-port.txt
 	grep -q 'containerPort: 8080' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should keep the container port independent from the Service port'
 	grep -q 'port: 80' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should allow the Service port to differ from the container port'
 	external_render_dir=$(mktemp -d)
 	external_package_dir=$(mktemp -d)
-	cat >/tmp/template-k8s-external-values.yaml <<'EOF'
+	cat >${TMPDIR}/template-k8s-external-values.yaml <<'EOF'
 container:
   port: 9090
 EOF
 	PROJECT_CFG_FILE=config/project.cfg \
-		K8S_VALUES_FILE=/tmp/template-k8s-external-values.yaml \
+		K8S_VALUES_FILE=${TMPDIR}/template-k8s-external-values.yaml \
 		K8S_RENDER_DIR="${external_render_dir}" \
 		K8S_PACKAGE_DIR="${external_package_dir}" \
-		make k8s >/tmp/template-k8s-external-paths.txt
+		make k8s >${TMPDIR}/template-k8s-external-paths.txt
 	[ -f "${external_render_dir}/kc-secure-template.yaml" ] || fail 'make k8s should write rendered manifests to an external K8S_RENDER_DIR'
 	grep -q 'containerPort: 9090' "${external_render_dir}/kc-secure-template.yaml" || fail 'make k8s should apply an external K8S_VALUES_FILE override'
 	find "${external_package_dir}" -maxdepth 1 -type f -name '*.tgz' | grep -q . || fail 'make k8s should package charts into an external K8S_PACKAGE_DIR'
@@ -1081,153 +982,35 @@ EOF
 	sed \
 		-e "s/^PROJECT_NAME='kc-secure-template'/PROJECT_NAME='My_App'/" \
 		-e "s#^PROJECT_IMAGE=.*#PROJECT_IMAGE='ghcr.io/example/my-app:local'#" \
-		config/project.cfg >/tmp/template-k8s-sanitized.cfg
-	sh ./scripts/k8s.sh /tmp/template-k8s-sanitized.cfg >/tmp/template-k8s-sanitized.txt
+		config/project.cfg >${TMPDIR}/template-k8s-sanitized.cfg
+	sh ./scripts/k8s.sh ${TMPDIR}/template-k8s-sanitized.cfg >${TMPDIR}/template-k8s-sanitized.txt
 	[ -f .tmp/k8s/rendered/my-app.yaml ] || fail 'make k8s should sanitize the default release name for non-DNS-safe project names'
 	grep -q 'app.kubernetes.io/instance: my-app' .tmp/k8s/rendered/my-app.yaml || fail 'make k8s should render a DNS-safe default release label for non-DNS-safe project names'
 	grep -q 'app.kubernetes.io/name: my-app' .tmp/k8s/rendered/my-app.yaml || fail 'make k8s should sanitize the default chart app name for non-DNS-safe project names'
-	cat >/tmp/template-k8s-digest.cfg <<'EOF'
+	cat >${TMPDIR}/template-k8s-digest.cfg <<'EOF'
 . ./config/project.cfg
 K8S_IMAGE_REPOSITORY='ghcr.io/example/app'
 K8S_IMAGE_TAG='sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 EOF
-	sh ./scripts/k8s.sh /tmp/template-k8s-digest.cfg >/tmp/template-k8s-digest.txt
+	sh ./scripts/k8s.sh ${TMPDIR}/template-k8s-digest.cfg >${TMPDIR}/template-k8s-digest.txt
 	grep -q 'image: "ghcr.io/example/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"' .tmp/k8s/rendered/kc-secure-template.yaml || fail 'make k8s should render digest-pinned images with @sha256 references'
-	sh ./scripts/template.sh manifest
-	tail -n +2 dist/template-manifest.txt >/tmp/template-manifest.txt
-	list_template_files >/tmp/template-expected-manifest.txt
-	cmp -s /tmp/template-manifest.txt /tmp/template-expected-manifest.txt || fail 'template manifest is out of sync'
-	rm -rf dist
-	ENABLE_SBOM=false ENABLE_GRYPE=false make dist PROJECT_CFG_FILE=config/project.cfg >/dev/null
-	cp dist/kc-secure-repo-template.tar.gz /tmp/template-first.tar.gz
-	rm -rf dist
-	ENABLE_SBOM=false ENABLE_GRYPE=false make dist PROJECT_CFG_FILE=config/project.cfg >/dev/null
-	cp dist/kc-secure-repo-template.tar.gz /tmp/template-second.tar.gz
-	[ "$(sha256sum /tmp/template-first.tar.gz | awk '{print $1}')" = "$(sha256sum /tmp/template-second.tar.gz | awk '{print $1}')" ] || fail 'release archive should be reproducible'
+	cat >config/project.cfg.derived <<'EOF'
+. ./config/project.cfg
+PROJECT_NAME='Derived_App'
+PROJECT_IMAGE='registry.example.com:5000/derived-app:local'
+EOF
+	sh ./scripts/k8s.sh config/project.cfg.derived
+	grep -q 'image: "registry.example.com:5000/derived-app:local"' .tmp/k8s/rendered/derived-app.yaml || fail 'Helm should use layered project image defaults'
+	tar -xOzf .tmp/k8s/package/derived-app-0.1.0.tgz derived-app/values.yaml | grep -q 'repository: registry.example.com:5000/derived-app' || fail 'packaged chart should inherit the project image'
+	ENABLE_SBOM=false ENABLE_GRYPE=false make dist
+	cp dist/kc-secure-repo-template.tar.gz "${TMPDIR}/first.tar.gz"
+	ENABLE_SBOM=false ENABLE_GRYPE=false make dist
+	cmp "${TMPDIR}/first.tar.gz" dist/kc-secure-repo-template.tar.gz || fail 'release archive should be reproducible'
+	sha256sum -c dist/SHA256SUMS
+	sha256sum -c dist/ARCHIVE-SHA256SUMS
+	printf '\n==> Template regressions and copied-repository smoke checks passed\n'
 	;;
-smoke)
-	# Smoke mode copies the template into temporary directories and adapts it like a new user would.
-	workdir=$(mktemp -d)
-	root_dir=$(pwd)
-	trap 'rm -rf "${workdir}"' EXIT INT TERM
-	list_template_files >"${workdir}/files.txt"
-	mkdir -p "${workdir}/go" "${workdir}/infra"
-	(
-		cd "${workdir}/go"
-		tar -C "${root_dir}" -cf - -T "${workdir}/files.txt" | tar -xf -
-		rm -rf src
-		mkdir -p src/cmd/app
-		# Create a minimal Go project that uses the template's container-first workflow.
-		cat >src/go.mod <<'EOF'
-module example.com/template-go-smoke
 
-go 1.26.1
-EOF
-		cat >src/cmd/app/main.go <<'EOF'
-package main
-
-import "fmt"
-
-func main() {
-	fmt.Println("hello from go smoke test")
-}
-EOF
-		cat >config/project.cfg <<'EOF'
-DEV_BASE_IMAGE='golang:1.26.1-trixie@sha256:1d414b0376b53ec94b9a2493229adb81df8b90af014b18619732f1ceaaf7234a'
-DEV_PACKAGE_SNAPSHOT_LOCK='20260401T164506Z'
-DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f'
-DEV_SCAN_ACTIONLINT_IMAGE_LOCK='rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667'
-ENABLE_SBOM='false'
-ENABLE_GRYPE='false'
-DEV_K8S_HELM_IMAGE='alpine/helm:3.19.0'
-K8S_CHART_PATH='config/k8s/chart'
-K8S_RELEASE_NAME='smoke-go'
-K8S_NAMESPACE='smoke'
-K8S_VALUES_FILE=''
-K8S_IMAGE_REPOSITORY='example.com/template-go-smoke'
-K8S_IMAGE_TAG='smoke'
-EOF
-		cat >Dockerfile <<'EOF'
-# syntax=docker/dockerfile:1
-ARG DEV_BASE_IMAGE
-ARG DEV_PACKAGE_SNAPSHOT
-
-FROM ${DEV_BASE_IMAGE:-golang:1.26.1-trixie} AS dev
-
-WORKDIR /workspace
-COPY . .
-
-CMD ["sh", "-eu", "-c", "cd src && test -z \"$(gofmt -l .)\" && go vet ./... && go test ./... && go build -trimpath -buildvcs=false ./cmd/app"]
-EOF
-		cat >scripts/scan.sh <<'EOF'
-#!/bin/sh
-set -eu
-
-PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
-project_cfg_file=${PROJECT_CFG_FILE}
-case "${project_cfg_file}" in
-/* | ./* | ../*) ;;
-*) project_cfg_file="./${project_cfg_file}" ;;
-esac
-. "${project_cfg_file}"
-
-docker build \
-	--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
-	--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-	-t smoke-go:local .
-
-docker run --rm -v "$(pwd):/workspace" -w /workspace smoke-go:local \
-	sh -eu -c 'cd src && test -z "$(gofmt -l .)" && go vet ./... && go test ./... && go build -trimpath -buildvcs=false ./cmd/app'
-EOF
-		cat >scripts/dist.sh <<'EOF'
-#!/bin/sh
-set -eu
-
-PROJECT_CFG_FILE=${1:-${PROJECT_CFG_FILE:-config/project.cfg}}
-project_cfg_file=${PROJECT_CFG_FILE}
-case "${project_cfg_file}" in
-/* | ./* | ../*) ;;
-*) project_cfg_file="./${project_cfg_file}" ;;
-esac
-. "${project_cfg_file}"
-
-docker build \
-	--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
-	--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-	-t smoke-go:local .
-
-mkdir -p dist
-docker run --rm -v "$(pwd):/workspace" -w /workspace smoke-go:local \
-	sh -eu -c 'cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o ../dist/app-linux-amd64 ./cmd/app'
-EOF
-		chmod +x scripts/scan.sh scripts/dist.sh
-		# The copied template should still be easy to adapt to a simple Go repository.
-		make scan PROJECT_CFG_FILE=config/project.cfg >/dev/null
-		make k8s PROJECT_CFG_FILE=config/project.cfg >/dev/null
-		make dist PROJECT_CFG_FILE=config/project.cfg >/dev/null
-		[ -d dist ] || fail 'make dist should create root dist'
-		[ ! -d src/dist ] || fail 'make dist should not create src/dist'
-		[ -f .tmp/k8s/rendered/smoke-go.yaml ] || fail 'make k8s should render the optional Helm chart in a copied repo'
-		assert_no_nested_dist_dirs
-	)
-	(
-		cd "${workdir}/infra"
-		tar -C "${root_dir}" -cf - -T "${workdir}/files.txt" | tar -xf -
-		# Also verify the bundled infra workspace works in a fresh copied repository.
-		cat >config/project.cfg <<'EOF'
-DEV_BASE_IMAGE='debian:trixie-slim@sha256:4ffb3a1511099754cddc70eb1b12e50ffdb67619aa0ab6c13fcd800a78ef7c7a'
-DEV_PACKAGE_SNAPSHOT_LOCK='20260401T164506Z'
-DEV_TERRAFORM_IMAGE='hashicorp/terraform:1.14.8'
-DEV_TERRAFORM_IMAGE_LOCK='hashicorp/terraform:1.14.8@sha256:42ecfb253183ec823646dd7859c5652039669409b44daa72abf57112e622849a'
-DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f'
-ENABLE_SBOM='false'
-ENABLE_GRYPE='false'
-EOF
-		make infra PROJECT_CFG_FILE=config/project.cfg >/dev/null
-		[ ! -d dist ] || fail 'make infra should not create root dist'
-		assert_no_nested_dist_dirs
-	)
-	;;
 *)
 	fail "unknown mode: ${mode}"
 	;;

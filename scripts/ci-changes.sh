@@ -31,16 +31,28 @@ changed_files_from_event() {
 	fi
 
 	# On pull_request events, actions/checkout checks out GitHub's synthetic merge
-	# commit by default. Comparing its two parents is fast and avoids calling the
-	# GitHub API or granting pull-requests: read.
-	if ! git rev-parse --verify -q "${GITHUB_SHA}^1" >/dev/null; then
+	# commit by default. Its first parent is the current base and the merge commit
+	# is the exact tree under test, so this comparison excludes changes that exist
+	# only because the pull request base advanced independently.
+	github_sha=${GITHUB_SHA:-}
+	if [ -z "${github_sha}" ]; then
 		return 1
 	fi
-	if ! git rev-parse --verify -q "${GITHUB_SHA}^2" >/dev/null; then
+	if ! git rev-parse --verify -q "${github_sha}^{commit}" >/dev/null 2>&1; then
+		return 1
+	fi
+	if ! git rev-parse --verify -q "${github_sha}^1" >/dev/null 2>&1; then
+		return 1
+	fi
+	if ! git rev-parse --verify -q "${github_sha}^2" >/dev/null 2>&1; then
 		return 1
 	fi
 
-	git diff --name-only "${GITHUB_SHA}^1" "${GITHUB_SHA}^2"
+	# Never collapse a delete/add pair into a rename: both paths can belong to
+	# different test categories. Quoted output also turns unusual pathnames into
+	# deliberately unrecognized input, which takes the conservative run-all path.
+	LC_ALL=C git -c core.quotePath=true diff --no-renames --name-only \
+		"${github_sha}^1" "${github_sha}" --
 }
 
 is_source_test_path() {
@@ -54,9 +66,9 @@ is_source_test_path() {
 	esac
 }
 
-is_docs_or_agent_path() {
+is_recognized_prose_path() {
 	case "$1" in
-	docs/* | .agents/* | AGENTS.md | CLAUDE.md | README.md | LICENSE.md | code_review.md | *.md)
+	AGENTS.md | CLAUDE.md | README.md | LICENSE.md | code_review.md | docs/*.md | .agents/*.md)
 		return 0
 		;;
 	*)
@@ -94,9 +106,15 @@ while IFS= read -r path; do
 
 	if is_source_test_path "${path}"; then
 		test_code=true
-	fi
-
-	if ! is_docs_or_agent_path "${path}"; then
+		test_repo=true
+	elif is_recognized_prose_path "${path}"; then
+		:
+	elif [ "${path#config/}" != "${path}" ]; then
+		test_repo=true
+	else
+		# Unknown paths, including Git-quoted pathnames, run both jobs. New
+		# repository surfaces must opt into a narrower category deliberately.
+		test_code=true
 		test_repo=true
 	fi
 done <<EOF
