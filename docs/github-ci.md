@@ -104,6 +104,48 @@ container-first, pinned, scanned, and reviewable.
   - treat artifacts from PR code as untrusted
   - add a reviewed policy exception before committing `workflow_run`
 
+## Change Detection
+
+Required workflows should not use top-level `paths` or `paths-ignore` filters.
+When GitHub skips a required workflow this way, the required check can remain
+pending and block the pull request.
+
+Use the checked-in `scripts/ci-changes.sh` detector for small, fast PR gating:
+
+- keep `test.yml` triggered for every pull request
+- gate expensive test jobs with job-level `if:` conditions
+- keep `scan.yml` always running because docs, workflows, examples, and scripts
+  can all contain secrets or policy issues
+- prefer conservative patterns: run tests when the detector cannot confidently
+  classify the change
+
+The detector compares a pull request's synthetic merge commit with its first
+parent. This measures the tree GitHub actually tests without rerunning jobs for
+changes that exist only because the base branch advanced. Checkout depth two is
+required so the merge and its parents are available. Non-PR events always run
+both test jobs.
+
+Classification is ordered and conservative:
+
+- source, build, script, shared project configuration, lock configuration, and
+  the test workflow run both test jobs
+- the named root guidance and license files, plus Markdown below `docs/` and
+  `.agents/`, skip both expensive test jobs
+- other files below `config/` run only the generated-repository template tests
+- every other path runs both jobs, including unrecognized or Git-quoted names
+
+Rename detection is disabled so a move is evaluated as both a removal and an
+addition. Missing history, failed or empty diffs, and non-PR events run both
+jobs. A job is skipped only when successful detection emits its explicit
+`false` output; missing or malformed output runs the job, while detector-step
+failure fails the required checks.
+
+When adapting this template, add a path to a narrower category only when its
+effects are understood and regression-tested. Prefer leaving new repository
+surfaces on the run-both fallback. Keep prose exemptions limited to files that
+cannot affect build or execution behavior; scripts placed below documentation
+directories are intentionally not exempt.
+
 ## Workflow Permissions
 
 - Every checked-in workflow must declare a top-level `permissions:` block.

@@ -24,6 +24,186 @@ fail() {
 	exit 1
 }
 
+assert_ci_change_detection() {
+	name=$1
+	changed_files=$2
+	expected_test_code=$3
+	expected_test_repo=$4
+	fixture=${TMPDIR}/ci-changes-fixture
+
+	printf '%s' "${changed_files}" >"${fixture}"
+	output=$(CI_CHANGED_FILES_FILE="${fixture}" sh scripts/ci-changes.sh)
+	expected_output=$(printf 'test_code=%s\ntest_repo=%s' "${expected_test_code}" "${expected_test_repo}")
+	[ "${output}" = "${expected_output}" ] || {
+		printf '%s\n' "${output}" >&2
+		fail "${name}: unexpected detector output"
+	}
+}
+
+test_ci_change_detection_rules() {
+	assert_ci_change_detection 'recognized prose' 'README.md
+LICENSE.md
+AGENTS.md
+CLAUDE.md
+code_review.md
+docs/github-ci.md
+docs/guides/setup.md
+.agents/code_review.md
+.agents/skills/example/README.md' false false
+	assert_ci_change_detection 'source, build, and script surfaces' 'src/cmd/app/main.go
+Dockerfile
+.dockerignore
+Makefile
+scripts/build.sh
+config/project.cfg
+config/lockfile.cfg
+.github/workflows/test.yml' true true
+	assert_ci_change_detection 'template configuration' 'config/k8s/chart/values.yaml' false true
+	assert_ci_change_detection 'mixed prose and template configuration' 'docs/github-ci.md
+config/infra/versions.tf' false true
+	assert_ci_change_detection 'mixed prose and source' 'README.md
+src/cmd/app/main.go' true true
+	assert_ci_change_detection 'unknown path' 'examples/demo.txt' true true
+	assert_ci_change_detection 'root Markdown is not implicitly prose' 'DESIGN.md' true true
+	assert_ci_change_detection 'executable-looking docs path' 'docs/build.sh' true true
+	assert_ci_change_detection 'empty diff' '' true true
+}
+
+test_ci_change_detection_output_contract() {
+	fixture=${TMPDIR}/ci-output-fixture
+	github_output=${TMPDIR}/github-output
+	printf '%s\n' 'docs/github-ci.md' >"${fixture}"
+	: >"${github_output}"
+	stdout=$(CI_CHANGED_FILES_FILE="${fixture}" GITHUB_OUTPUT="${github_output}" sh scripts/ci-changes.sh)
+	[ -z "${stdout}" ] || fail 'GITHUB_OUTPUT mode should not write decisions to stdout'
+	expected_output=$(printf 'test_code=false\ntest_repo=false')
+	actual_output=$(cat "${github_output}")
+	[ "${actual_output}" = "${expected_output}" ] || fail 'GITHUB_OUTPUT should receive both boolean decisions'
+
+	if CI_CHANGED_FILES_FILE="${TMPDIR}/missing-ci-fixture" sh scripts/ci-changes.sh >${TMPDIR}/missing-ci-stdout 2>${TMPDIR}/missing-ci-stderr; then
+		fail 'a missing changed-files fixture should fail detection'
+	fi
+	grep -q 'missing changed-files fixture' ${TMPDIR}/missing-ci-stderr || fail 'missing fixture failure should be explicit'
+
+	output=$(GITHUB_EVENT_NAME=push sh scripts/ci-changes.sh)
+	[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'non-PR events should run both jobs'
+	output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA=missing-history sh scripts/ci-changes.sh)
+	[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'missing PR history should run both jobs'
+	fake_bin=${TMPDIR}/ci-failed-diff-bin
+	mkdir "${fake_bin}"
+	cat >"${fake_bin}/git" <<'EOF'
+#!/bin/sh
+case "${1:-}" in
+rev-parse) exit 0 ;;
+-c) exit 1 ;;
+*) exit 1 ;;
+esac
+EOF
+	chmod +x "${fake_bin}/git"
+	output=$(PATH="${fake_bin}:${PATH}" GITHUB_EVENT_NAME=pull_request GITHUB_SHA=synthetic-merge sh scripts/ci-changes.sh)
+	[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'failed diffs should run both jobs'
+
+	grep -Fq "outputs.test_code != 'false'" .github/workflows/test.yml || fail 'test-code should run for missing or malformed detector output'
+	grep -Fq "outputs.test_repo != 'false'" .github/workflows/test.yml || fail 'test-repo should run for missing or malformed detector output'
+}
+
+test_ci_change_detection_git_history() {
+	root_dir=$(pwd)
+	history_dir=$(mktemp -d)
+
+	if ! (
+		cd "${history_dir}"
+		mkdir home
+		export HOME="${history_dir}/home"
+		git init -q -b main source
+		cd source
+		git config user.name 'CI Detector Test'
+		git config user.email 'ci-detector@example.invalid'
+		mkdir -p src docs
+		printf '%s\n' 'package main' >src/app.go
+		printf '%s\n' 'package main' >src/remove.go
+		printf '%s\n' '# Readme' >README.md
+		git add .
+		git commit -q -m initial
+
+		git checkout -q -b feature
+		printf '%s\n' '# Guide' >docs/guide.md
+		git add docs/guide.md
+		git commit -q -m docs
+
+		git checkout -q main
+		printf '%s\n' 'package main // base advanced' >src/app.go
+		git commit -qam 'advance base independently'
+		git merge -q --no-ff --no-edit feature
+		git branch synthetic-merge
+		merge_sha=$(git rev-parse HEAD)
+
+		cd ..
+		git clone -q --depth=2 --branch synthetic-merge "file://${history_dir}/source" shallow
+		cd shallow
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${merge_sha}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=false\ntest_repo=false')" ] || {
+			printf '%s\n' "${output}" >&2
+			fail 'depth-two synthetic merge should compare its first parent with the tested tree'
+		}
+
+		cd "${history_dir}/source"
+		git checkout -q -b rename-case "${merge_sha}^1"
+		mkdir -p docs
+		git mv src/app.go docs/app.md
+		git commit -q -m 'move source into docs'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit rename-case
+		rename_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${rename_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'cross-category renames should classify both removed and added paths'
+
+		git checkout -q -b deletion-case "${rename_merge}"
+		git rm -q src/remove.go
+		git commit -q -m 'delete source'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit deletion-case
+		deletion_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${deletion_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'source deletions should run both jobs'
+
+		git checkout -q -b quoted-case "${deletion_merge}"
+		quoted_path=$(printf 'docs/guide\tname.md')
+		printf '%s\n' '# Quoted path' >"${quoted_path}"
+		git add "${quoted_path}"
+		git commit -q -m 'add quoted pathname'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit quoted-case
+		quoted_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${quoted_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'quoted pathnames should run both jobs'
+
+		git checkout -q -b executable-docs-case "${quoted_merge}"
+		printf '%s\n' '#!/bin/sh' >docs/build.sh
+		chmod +x docs/build.sh
+		git add docs/build.sh
+		git commit -q -m 'add executable below docs'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit executable-docs-case
+		executable_docs_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${executable_docs_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=true\ntest_repo=true')" ] || fail 'executable files below docs should run both jobs'
+
+		git checkout -q -b prose-deletion-case "${executable_docs_merge}"
+		git rm -q README.md
+		git commit -q -m 'delete recognized prose'
+		git checkout -q synthetic-merge
+		git merge -q --no-ff --no-edit prose-deletion-case
+		prose_deletion_merge=$(git rev-parse HEAD)
+		output=$(GITHUB_EVENT_NAME=pull_request GITHUB_SHA="${prose_deletion_merge}" sh "${root_dir}/scripts/ci-changes.sh")
+		[ "${output}" = "$(printf 'test_code=false\ntest_repo=false')" ] || fail 'recognized prose deletions should skip both jobs'
+	); then
+		rm -rf "${history_dir}"
+		return 1
+	fi
+	rm -rf "${history_dir}"
+}
+
 test_workflow_pull_request_target_is_rejected() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -745,6 +925,9 @@ template | smoke | _regression)
 		test_workflow_run_is_rejected_without_policy_exception
 		test_workflow_missing_permissions_is_rejected
 		test_workflow_metadata_interpolation_is_rejected
+		test_ci_change_detection_rules
+		test_ci_change_detection_output_contract
+		test_ci_change_detection_git_history
 		test_local_state_is_not_packaged
 		test_infra_preserves_lock_and_forwards_token
 		test_optional_k8s_update_compat
