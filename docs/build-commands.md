@@ -39,6 +39,9 @@ call instead of adding many new root targets.
 - `TEST_MODE`: defaults to `src`. `template` runs isolated shell regressions and
   copied-repository build, test, Terraform, Helm, and packaging checks. `smoke`
   remains a compatibility alias for that same suite.
+- `TEMPLATE_SKIP_SRC_TESTS`: set to exactly `true` to skip the nested `src`
+  tests inside `TEST_MODE=template`. CI uses it because `test-code` already runs
+  them; leave it unset locally and for releases.
 - `INFRA_UPDATE_LOCK=true`: explicitly refreshes provider checksums during
   `make infra`; review the resulting lockfile before applying.
 - `APPLY=true`: lets `make infra` apply the generated Terraform plan.

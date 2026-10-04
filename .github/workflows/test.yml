@@ -2,7 +2,8 @@
 name: test.yml
 
 # Run tests on main and on pull requests so protected branches can require the
-# same checks before merge.
+# same checks before merge. On pull requests, scripts/ci-changes.sh decides which
+# of test-code / test-repo run; a skipped job reports success to required checks.
 on:
   push:
     branches:
@@ -89,5 +90,10 @@ jobs:
         with:
           persist-credentials: false
       # TEST_MODE=template selects the generated-repo smoke path in scripts/test.sh.
+      # TEMPLATE_SKIP_SRC_TESTS=true skips the nested `make test TEST_MODE=src`
+      # because the test-code job already runs it. `make build` and the shell
+      # regressions still run. release.yml and local runs keep the full suite.
       - name: Run generated repository smoke test
+        env:
+          TEMPLATE_SKIP_SRC_TESTS: "true"
         run: PROJECT_CFG_FILE=config/project.cfg TEST_MODE=template make test
