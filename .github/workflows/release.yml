@@ -82,10 +82,12 @@ jobs:
       - name: Verify release target is on default branch
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -eu
 
-          git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)" \
+            fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${DEFAULT_BRANCH}"; then
             printf 'release target %s (%s) is not reachable from origin/%s\n' \
               "${RELEASE_TAG}" "${GITHUB_SHA}" "${DEFAULT_BRANCH}" >&2
@@ -152,12 +154,14 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -eu
 
           tag_ref="refs/tags/${RELEASE_TAG}"
-          if git ls-remote --exit-code --tags origin "${tag_ref}" >/dev/null 2>&1; then
-            git fetch --no-tags origin "+${tag_ref}:${tag_ref}"
+          git_auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)"
+          if git -c http.extraheader="${git_auth_header}" ls-remote --exit-code --tags origin "${tag_ref}" >/dev/null 2>&1; then
+            git -c http.extraheader="${git_auth_header}" fetch --no-tags origin "+${tag_ref}:${tag_ref}"
             tag_commit=$(git rev-list -n 1 "${RELEASE_TAG}")
             if [ "${tag_commit}" != "${GITHUB_SHA}" ]; then
               printf 'release tag %s already points at %s, expected %s\n' \

@@ -183,7 +183,7 @@ awk -v image_repository="${image_repository}" -v image_tag="${image_tag}" '
 	/^image:/ { in_image = 1; print; next }
 	in_image && /^[^[:space:]]/ { in_image = 0 }
 	in_image && /^[[:space:]]+repository:/ { print "  repository: " image_repository; next }
-	in_image && /^[[:space:]]+tag:/ { print "  tag: " image_tag; next }
+	in_image && /^[[:space:]]+tag:/ { print "  tag: \"" image_tag "\""; next }
 	{ print }
 ' "${staged_chart_path}/values.yaml" >"${values_yaml_tmp}"
 mv "${values_yaml_tmp}" "${staged_chart_path}/values.yaml"
