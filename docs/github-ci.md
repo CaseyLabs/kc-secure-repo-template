@@ -10,10 +10,10 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
     │   └── setup-github-app.sh
     ├── renovate.json
     └── workflows
-    ├── release.yml
-    ├── renovate.yml
-    ├── scan.yml
-    └── test.yml
+        ├── release.yml
+        ├── renovate.yml
+        ├── scan.yml
+        └── test.yml
 ```
 
 ## Folder Contents

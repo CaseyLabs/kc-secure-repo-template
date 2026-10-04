@@ -24,8 +24,12 @@ permissions:
 
 # Never cancel an in-flight release for a tag. Release jobs create artifacts and
 # attestations, so a maintainer should explicitly cancel them if needed.
+# Group by the release tag rather than github.ref: manual runs all share the
+# default-branch ref, so a ref-keyed group would let one queued manual release
+# replace another, while a tag push and a manual run for the same tag would race
+# in separate groups.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -53,13 +57,19 @@ jobs:
         run: |
           set -eu
 
+          # A shell glob such as v[0-9]*.[0-9]*.[0-9]* also accepts trailing
+          # text (spaces, slashes, suffixes), so first allow only tag
+          # characters (this also rejects embedded newlines, which grep would
+          # otherwise check line by line), then require the exact vX.Y.Z shape.
           case "${RELEASE_TAG}" in
-            v[0-9]*.[0-9]*.[0-9]*) ;;
-            *)
-              printf 'release_tag must look like vX.Y.Z, got %s\n' "${RELEASE_TAG}" >&2
-              exit 1
-              ;;
+            *[!v0-9.]*) release_tag_ok=false ;;
+            *) release_tag_ok=true ;;
           esac
+          if [ "${release_tag_ok}" != true ] ||
+            ! printf '%s\n' "${RELEASE_TAG}" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            printf 'release_tag must look like vX.Y.Z, got %s\n' "${RELEASE_TAG}" >&2
+            exit 1
+          fi
 
           if [ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]; then
             printf 'manual releases must run from the default branch (%s), got %s\n' \
