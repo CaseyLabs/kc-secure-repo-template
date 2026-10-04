@@ -1,24 +1,13 @@
----
-name: terraform-hardening
-description: Use when changing or reviewing the Terraform-backed GitHub repository hardening workspace under config/infra, including provider pins, rulesets, default branch protection, required checks, secret scanning, Dependabot security updates, token handling, plan/apply behavior, and infra documentation. Do not use for ordinary app code, generic release integrity, generic template adaptation, or non-infra GitHub Actions changes unless they directly affect hardening expectations.
----
-
 # Template infra hardening
 
-Use this skill when working on the Terraform-backed GitHub repository hardening workspace in `config/infra`.
+Use this reference when working on the Terraform-backed GitHub repository hardening workspace in `config/infra`.
 
-## Use this skill when
+## Read this reference when
 - changing Terraform resources, variables, provider pins, lockfiles, or documentation under `config/infra`
 - reviewing branch rulesets, required status checks, merge protections, signed commits, or default branch handling
 - changing secret scanning, push protection, Dependabot security updates, vulnerability alerts, or repository security settings
 - changing `scripts/infra.sh` behavior that affects plan/apply safety or GitHub token handling
 - aligning infra hardening guidance with the root `Makefile`, GitHub Actions jobs, or template documentation
-
-## Do not use this skill when
-- the task is ordinary application code, release integrity, or generic template adaptation
-- the task is only GitHub Actions workflow implementation with no infra hardening impact
-- the task is only validating existing behavior; use `workflow-validation`
-- the task is only general GitHub hardening documentation with no Terraform workspace change; use `github-hardening`
 
 ## Goals
 - Keep the Terraform example safe for derived repositories to adapt.
@@ -27,7 +16,9 @@ Use this skill when working on the Terraform-backed GitHub repository hardening 
 - Avoid making solo-maintainer defaults look stronger than they are.
 
 ## Method
+- Read `config/infra/AGENTS.md` before working on the workspace or its companion `scripts/infra.sh`.
 - Treat `config/infra` as a reviewed example, not a universal policy for every repository.
+- Preserve plan-before-apply behavior. Apply only when the user explicitly requests it and supplies the required token context.
 - Verify version-sensitive Terraform provider and GitHub ruleset behavior against current official documentation before changing resource semantics or documented settings.
 - Keep provider versions, lockfiles, Docker image pins, and generated-state exclusions aligned.
 - Keep required status checks aligned with real workflow job names, using the names in `.github/workflows/` and `config/infra/variables.tf` (currently `test-code`, `test-repo`, and `scan-repo`).

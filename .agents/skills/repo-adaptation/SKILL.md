@@ -1,15 +1,16 @@
 ---
 name: repo-adaptation
-description: Use when adapting or customizing this repository to meet the needs of the source code under `src/`, including language and framework needs, dependencies, runtime behavior, Docker, Makefile targets, and customization surfaces. Do not use for routine bug fixes, small refactors, pure workflow validation, GitHub-settings-only work, or release-integrity-only work.
+description: Adapt the template to project code, language and framework needs, or optional Go, Node.js, SQL, and polyglot guidance. Covers dependencies, runtime behavior, Docker, Makefile targets, and customization surfaces. Do not use for routine bug fixes, pure workflow validation, GitHub hardening, or release-integrity-only work.
 ---
 
 # Repo adaptation
 
-Use this skill when adapting or customizing this repository to meet the needs of the source code under `src/`.
+Adapt this repository to project code under `src/` or revise optional language guidance for derived repositories.
 
 ## Use this skill when
 - inspecting `src/` to identify the project language, framework, dependency, runtime, build, test, Docker, and Makefile needs
 - adapting the repository for a new Go, Node.js, SQL, or small polyglot project
+- adding or revising optional language-specific documentation or checks
 - changing `config/project.cfg`, `Dockerfile`, `Makefile`, `scripts/`, or default project scaffolding
 - changing the default customization surface for derived repositories
 
@@ -26,6 +27,10 @@ Use this skill when adapting or customizing this repository to meet the needs of
 - Keep the repository container-first, reproducible, and easy to review.
 - Keep fork-specific behavior explicit and reviewable.
 
+## Supporting guidance
+
+Read [language guidance](references/language-guidance.md) only when adding or revising language-specific guidance or checks. Keep language behavior optional in the generic template.
+
 ## Method
 - Treat `Makefile` as the primary user-facing interface.
 - Treat `scripts/` as implementation details.
@@ -37,7 +42,7 @@ Use this skill when adapting or customizing this repository to meet the needs of
   - identify Docker image, port, volume, and environment-variable needs
   - identify whether root `Makefile` targets should call existing project commands or add thin wrappers
 - Keep changes small and reviewable.
-- For Terraform-backed GitHub hardening changes under `config/infra`, use `terraform-hardening` instead.
+- For Terraform-backed GitHub hardening changes under `config/infra`, use `github-hardening` instead.
 - If a change weakens security, reproducibility, or reviewability, document the reason explicitly.
 - Update documentation when the customization surface, workflow, or security posture changes.
 

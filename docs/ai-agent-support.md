@@ -6,8 +6,7 @@ maintenance, and repetitive repository tasks.
 
 ## Files And Directories
 
-- `AGENTS.md`: durable repository rules for coding agents.
-- `CLAUDE.md`: a small Claude Code shim that imports `AGENTS.md`.
+- `AGENTS.md`: shared durable repository rules for Codex CLI and Claude Code.
 - `.agents/code_review.md`: repository-specific `/review` checklist.
 - `.agents/skills/`: task-specific workflows for compatible agents.
 - `.claude/skills/`: Claude Code entrypoints that load the canonical workflows
@@ -42,10 +41,38 @@ For a derived repository:
   and their corresponding `.claude/skills/` entrypoints
 - add subtree `AGENTS.md` files only where a directory has real local hazards or
   verification needs
-- keep `CLAUDE.md` shims small when Claude Code compatibility is useful
+
+Codex builds its startup instruction chain from the repository root to its
+working directory. When a task reaches another subtree, the root guidance
+explicitly requires reading that subtree's `AGENTS.md`. Claude Code reads
+`AGENTS.md` directly, including subtree guidance when opening files there.
+This template assumes a Claude Code version and configuration that support
+direct loading; it no longer ships `CLAUDE.md` import files.
+
+Direct loading requires Claude Code v2.1.277 or later with its built-in
+`agents-md` plugin enabled; use v2.1.281 or later for the session types excluded
+by earlier releases. If an ancestor or local `CLAUDE.md`/`CLAUDE.local.md` prevents
+loading, select `claude-md-and-agents-md` under Project instructions in `/config`.
+The `.claude/skills/` entrypoints remain necessary for Claude skill discovery.
 
 Do not put secrets, credentials, private URLs, or unreviewed operational details
 in agent guidance.
+
+## Skills
+
+- `repo-adaptation`: project customization, with optional language guidance in
+  `references/language-guidance.md`.
+- `github-hardening`: GitHub controls, with Terraform procedures in
+  `references/terraform.md`.
+- `workflow-validation`: checks shared across repository workflows.
+- `release-integrity`: artifact verification and release evidence.
+- `security-review`: explicitly invoked security analysis.
+- `pr-draft-summary`: PR handoff text grounded in the diff and completed checks.
+
+The references live inside their owning canonical skill directories and load
+only for relevant tasks. The former `language-profile-guidance` and
+`terraform-hardening` skill commands are replaced by `repo-adaptation` and
+`github-hardening`, respectively.
 
 ## Common Uses
 
@@ -68,9 +95,9 @@ After changing guidance, start a fresh session in the repository:
 - In Codex, ask it to list its loaded instruction sources and use `/skills` to
   confirm the repository skills appear. Start in `config/infra/` or `config/k8s/`
   to check the corresponding nested instruction chain.
-- In Claude Code, use `/context` to confirm the root `CLAUDE.md` import loaded,
+- In Claude Code, use `/context` to confirm the root `AGENTS.md` loaded,
   and `/skills` to confirm the project entrypoints appear. Read a file under
-  `config/infra/` or `config/k8s/` to check its local `CLAUDE.md` import.
+  `config/infra/` or `config/k8s/` to check its local `AGENTS.md`.
 - Try `$pr-draft-summary` in Codex or `/pr-draft-summary` in Claude on a prepared
   change, asking for text only. Confirm it reads the canonical workflow and
   reports only validation that actually ran.

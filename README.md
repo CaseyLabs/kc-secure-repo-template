@@ -126,7 +126,6 @@ make infra    # build/test/plan Terraform config from `./config/infra`
 ```text
 .
 ├── AGENTS.md                 # Repo-specific AI agent guidance
-├── CLAUDE.md                 # Claude Code shim that imports AGENTS.md
 ├── Makefile                  # For all `make` commands
 ├── Dockerfile                # Default nonroot dev/CI container image
 ├── docs/                     # Project documentation
