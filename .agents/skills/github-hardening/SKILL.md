@@ -1,23 +1,23 @@
 ---
 name: github-hardening
-description: Use when updating or reviewing GitHub-side hardening guidance for derived repositories, including required settings, rulesets, scanning, review protections, and workflow permissions. Use terraform-hardening instead for Terraform-backed changes under config/infra. Do not use for ordinary in-repo implementation changes unless the task is primarily about documented GitHub controls.
+description: Review or update GitHub repository hardening guidance and its Terraform implementation under config/infra, including rulesets, required checks, scanning, permissions, provider pins, and plan/apply safety. Do not use for ordinary app code, generic template adaptation, release integrity, or routine workflow validation.
 ---
 
 # GitHub hardening
 
-Use this skill when working on GitHub-side hardening guidance for this template or its derived repositories.
+Review or update GitHub-side controls and their Terraform implementation for this template or its derived repositories.
 
 ## Use this skill when
 - updating repository hardening documentation
+- changing or reviewing `config/infra` or plan/apply and token handling in `scripts/infra.sh`
 - reviewing required GitHub settings for derived repositories
 - changing workflow permissions, review protections, scanning guidance, or ruleset expectations
 - adding or revising guidance around branch protection, code owners, secret scanning, push protection, or Dependabot
 
 ## Do not use this skill when
-- the task is primarily an in-repo code or script change
+- the task is ordinary application code or a script change unrelated to GitHub hardening
 - the task is primarily release-integrity design
 - the task is primarily template adaptation
-- the task is primarily Terraform-backed GitHub repository hardening under `config/infra`; use `terraform-hardening`
 - the task only needs ordinary workflow validation
 
 ## Goals
@@ -25,9 +25,13 @@ Use this skill when working on GitHub-side hardening guidance for this template 
 - Document controls that cannot be enforced solely through files in git.
 - Keep GitHub-side guidance aligned with current platform features and repository expectations.
 
+## Supporting guidance
+
+Read [Terraform hardening](references/terraform.md) when the task changes or reviews `config/infra`, its documentation, or `scripts/infra.sh` plan/apply and token handling. Follow `config/infra/AGENTS.md` for local safety and verification rules.
+
 ## Method
 - Distinguish clearly between controls enforced in git, CI, Docker, and manual GitHub configuration.
-- Treat `config/infra` as the concrete implementation example when reviewing GitHub-side guidance, but use `terraform-hardening` for direct infra edits.
+- Treat `config/infra` as the concrete implementation example when reviewing GitHub-side guidance.
 - Prefer minimal GitHub workflow permissions.
 - Treat release-related GitHub workflows as sensitive and difficult to bypass.
 - Keep required repository settings documented when they cannot be enforced in-repo.
@@ -35,7 +39,9 @@ Use this skill when working on GitHub-side hardening guidance for this template 
 - Label optional controls clearly as optional.
 - When changing rulesets, scanning, Dependabot, or repository settings, verify version-sensitive GitHub or provider behavior against current official documentation.
 
-## Minimum topics to review
+## Review topics
+
+Select the topics relevant to the requested scope:
 - branch protection or rulesets
 - required pull requests
 - required status checks

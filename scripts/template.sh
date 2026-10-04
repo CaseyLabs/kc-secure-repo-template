@@ -7,7 +7,6 @@ list_template_files() {
 
 	cat <<'EOF' |
 AGENTS.md
-CLAUDE.md
 Dockerfile
 LICENSE.md
 Makefile

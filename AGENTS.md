@@ -45,12 +45,10 @@ Use a repo-local skill only when a matching skill actually exists in `.agents/sk
 
 Typical routing:
 
-- Use `repo-adaptation` when adapting this template or a forked repository to a real project, inspecting inserted `src/` code, or revising customization points.
+- Use `repo-adaptation` when adapting this template or a forked repository to a real project, inspecting inserted `src/` code, revising customization points, or adding optional Go, Node.js, SQL, or polyglot guidance.
 - Use `workflow-validation` when changing `Makefile`, `Dockerfile`, `scripts/`, tests, packaging manifests, CI, or release workflows.
-- Use `github-hardening` when updating GitHub-side hardening guidance or required repository settings.
-- Use `terraform-hardening` when changing or reviewing the Terraform-backed GitHub repository hardening workspace under `config/infra`.
+- Use `github-hardening` when updating GitHub-side hardening guidance, required repository settings, or the Terraform-backed implementation under `config/infra`.
 - Use `release-integrity` when working on SBOMs, attestations, artifact scanning, signing guidance, or release workflow safety.
-- Use `language-profile-guidance` when adding or revising optional Go, Node.js, SQL, or polyglot guidance.
 - Use `pr-draft-summary` when drafting a PR handoff after substantive repository changes.
 - Use `security-review` only when the user explicitly invokes `$security-review` (Codex) or `/security-review` (Claude Code); do not select it by semantic matching.
 
@@ -59,6 +57,8 @@ If no matching skill exists, follow this file and the repository itself.
 ## Before making changes
 
 - Read the relevant files before editing.
+- Before working in a subtree, read any `AGENTS.md` files between the repository root and the target files, even when the session started at the root. Apply the more specific rules to that subtree.
+- Resolve repository paths in this file and the skills from the repository root; resolve linked skill references relative to their containing skill file. Run root `make` targets from the repository root.
 - Identify the affected workflow from the repository itself before choosing checks or commands.
 - For complex, ambiguous, multi-step, or high-risk work, inspect the repository first, then make a short plan and ask clarifying questions only for unresolved intent or tradeoffs.
 - If the task depends on tool versions, commands, flags, APIs, package versions, or installation steps, verify them against the latest official documentation before acting.

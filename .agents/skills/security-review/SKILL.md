@@ -54,7 +54,7 @@ Use ONLY if explicitly requested (e.g. “full security review”, “threat mod
 Rules:
 - define scope first
 - inspect repo before references
-- load at most one reference initially
+- load at most one reference for the task
 
 ---
 
@@ -109,12 +109,14 @@ If no issues: say so clearly.
 
 Only if necessary, choose ONE:
 
-- express / node backend
-- nextjs
-- react / frontend
-- vue
-- python (fastapi / django / flask)
-- golang backend
+- Express / Node backend: [Express guidance](references/javascript-express-web-server-security.md)
+- Next.js: [Next.js guidance](references/javascript-typescript-nextjs-web-server-security.md)
+- React frontend: [React guidance](references/javascript-typescript-react-web-frontend-security.md)
+- Vue frontend: [Vue guidance](references/javascript-typescript-vue-web-frontend-security.md)
+- FastAPI: [FastAPI guidance](references/python-fastapi-web-server-security.md)
+- Django: [Django guidance](references/python-django-web-server-security.md)
+- Flask: [Flask guidance](references/python-flask-web-server-security.md)
+- Go backend: [Go guidance](references/golang-general-backend-security.md)
 
 If no strong match → use none
 
@@ -125,5 +127,5 @@ If no strong match → use none
 - Only run after explicit `$security-review` or `/security-review` invocation
 - Never trigger implicitly
 - Never scan entire repo unless explicitly asked
-- Never load multiple references unless absolutely required
+- Never load more than one reference for the task
 - Never inflate output with generic advice
