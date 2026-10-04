@@ -361,9 +361,23 @@ test_local_state_is_not_packaged() {
 	mkdir -p config/infra src
 	: >config/infra/terraform.tfvars
 	: >src/app
+	# Exercise the packaging code with local credentials in a disposable tree.
+	mkdir -p src/nested
+	for secret in src/.env src/nested/.env.production config/.env.local; do
+		printf '%s\n' 'PACKAGING_TEST_SECRET=placeholder-only' >"${secret}"
+	done
+	printf '%s\n' 'APP_TOKEN=replace-me' >src/nested/.env.example
 	sh ./scripts/template.sh files >${TMPDIR}/template-files-local-state.txt
 	! grep -qx 'config/infra/terraform.tfvars' ${TMPDIR}/template-files-local-state.txt || fail 'template files should exclude local Terraform variable files'
 	! grep -qx 'src/app' ${TMPDIR}/template-files-local-state.txt || fail 'template files should exclude the generated example binary'
+	sh ./scripts/template.sh release
+	tar -tzf dist/kc-secure-repo-template.tar.gz >"${TMPDIR}/template-archive-local-state.txt"
+	for listing in "${TMPDIR}/template-files-local-state.txt" "${TMPDIR}/template-archive-local-state.txt"; do
+		for secret in src/.env src/nested/.env.production config/.env.local; do
+			! grep -Fxq "${secret}" "${listing}" || fail "packaging should exclude ${secret}"
+		done
+		grep -Fxq 'src/nested/.env.example' "${listing}" || fail 'packaging should preserve environment examples'
+	done
 	rm -f config/infra/terraform.tfvars src/app
 }
 
