@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       # Buildx enables Docker layer cache export/import for the scan image.
       - name: Set up Docker build cache
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Run secret and workflow scans
         env:
           # scripts/scan.sh reads this variable and passes it to docker buildx.

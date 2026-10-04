@@ -1,5 +1,5 @@
-# Build code and artifacts from src/
-name: build.yml
+# Publish versioned release artifacts and evidence.
+name: release.yml
 
 # This workflow publishes versioned release artifacts. Normal pushes and pull
 # requests use test.yml and scan.yml for fast feedback.
@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   release:
-    name: build-artifacts
+    name: release-artifacts
     # GitHub-hosted Ubuntu runner used for Docker, Make, and artifact actions.
     runs-on: ubuntu-24.04
     env:
