@@ -9,7 +9,10 @@ security scans on the tagged commit.
 `scripts/template.sh files` is the release file manifest. Directories in that
 manifest are expanded into files while local state and generated outputs are
 excluded, including Terraform state, local `.tfvars` files, nested build caches,
-and the generated example binary.
+and the generated example binary. Environment files named `.env` or `.env.*`
+are excluded at every depth, except `.env.example`, which must contain only
+public placeholders. These exclusions also apply when packaging an extracted
+template without Git metadata; other untracked files can still be included.
 
 The generated archive is `dist/kc-secure-repo-template.tar.gz`. It is built with
 normalized ordering, ownership, and timestamps so repeated builds can produce the
