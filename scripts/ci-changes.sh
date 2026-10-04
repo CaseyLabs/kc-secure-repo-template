@@ -5,6 +5,14 @@ set -eu
 # Decide which expensive test jobs need to run for the current GitHub Actions
 # event. The workflow itself is still triggered for every pull request so
 # required checks do not get stuck pending when a change is intentionally skipped.
+#
+# Classification order (first match wins, anything unknown runs both jobs):
+#   1. src, build/test scripts, shared config, test.yml -> test-code + test-repo
+#   2. prose (root guidance, docs/, .agents/ and .claude/ Markdown, config
+#      subtree AGENTS.md/CLAUDE.md)                     -> neither job
+#   3. other scripts (allowlist), .github/, .gitignore, remaining config/,
+#      non-Markdown agent files                         -> test-repo only
+#   4. everything else                                   -> test-code + test-repo
 
 write_output() {
 	key=$1
@@ -55,9 +63,16 @@ changed_files_from_event() {
 		"${github_sha}^1" "${github_sha}" --
 }
 
+# Paths that affect BOTH test jobs: the src/ example workspace and everything
+# `make test` (src mode) executes.
+#
+# Invariant: `make test` in src mode only uses scripts/test.sh, scripts/build.sh,
+# the Dockerfile/.dockerignore build inputs, the Makefile, and the two shared
+# config files below. If test.sh or build.sh ever start calling another script,
+# add that script here, or test-code will be skipped when it changes.
 is_source_test_path() {
 	case "$1" in
-	src/* | Dockerfile | .dockerignore | Makefile | scripts/* | config/project.cfg | config/lockfile.cfg | .github/workflows/test.yml)
+	src/* | Dockerfile | .dockerignore | Makefile | scripts/build.sh | scripts/test.sh | config/project.cfg | config/lockfile.cfg | .github/workflows/test.yml)
 		return 0
 		;;
 	*)
@@ -66,9 +81,26 @@ is_source_test_path() {
 	esac
 }
 
+# Prose that cannot affect build or execution behavior: skips both test jobs.
 is_recognized_prose_path() {
 	case "$1" in
-	AGENTS.md | CLAUDE.md | README.md | LICENSE.md | code_review.md | docs/*.md | .agents/*.md)
+	AGENTS.md | CLAUDE.md | README.md | LICENSE.md | code_review.md | docs/*.md | .agents/*.md | .claude/*.md | config/*/AGENTS.md | config/*/CLAUDE.md)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+# Paths that only the generated-repository (test-repo) job exercises. Scripts
+# are an explicit allowlist so a newly added script falls back to both jobs.
+is_repo_only_path() {
+	case "$1" in
+	scripts/clean.sh | scripts/dist.sh | scripts/example.sh | scripts/infra.sh | scripts/k8s-test-local.sh | scripts/k8s.sh | scripts/logs.sh | scripts/renovate.sh | scripts/run.sh | scripts/scan.sh | scripts/shell.sh | scripts/status.sh | scripts/stop.sh | scripts/template.sh | scripts/update.sh | scripts/workflow-policy.sh | scripts/ci-changes.sh)
+		return 0
+		;;
+	.github/* | .gitignore | .claude/* | .agents/* | config/*)
 		return 0
 		;;
 	*)
@@ -109,7 +141,7 @@ while IFS= read -r path; do
 		test_repo=true
 	elif is_recognized_prose_path "${path}"; then
 		:
-	elif [ "${path#config/}" != "${path}" ]; then
+	elif is_repo_only_path "${path}"; then
 		test_repo=true
 	else
 		# Unknown paths, including Git-quoted pathnames, run both jobs. New

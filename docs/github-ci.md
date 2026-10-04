@@ -125,14 +125,24 @@ changes that exist only because the base branch advanced. Checkout depth two is
 required so the merge and its parents are available. Non-PR events always run
 both test jobs.
 
-Classification is ordered and conservative:
+Classification is ordered and conservative (first match wins):
 
-- source, build, script, shared project configuration, lock configuration, and
-  the test workflow run both test jobs
-- the named root guidance and license files, plus Markdown below `docs/` and
-  `.agents/`, skip both expensive test jobs
-- other files below `config/` run only the generated-repository template tests
-- every other path runs both jobs, including unrecognized or Git-quoted names
+- both jobs: `src/`, `Dockerfile`, `.dockerignore`, `Makefile`,
+  `scripts/build.sh`, `scripts/test.sh`, `config/project.cfg`,
+  `config/lockfile.cfg`, and `.github/workflows/test.yml`; these are everything
+  `make test` in `src` mode executes
+- neither job: the named root guidance and license files, Markdown below
+  `docs/`, `.agents/` and `.claude/`, and `config/*/AGENTS.md` and
+  `config/*/CLAUDE.md`
+- `test-repo` only: the other known scripts (an explicit allowlist), everything
+  else under `.github/`, `.gitignore`, non-Markdown files below `.claude/` and
+  `.agents/`, and the remaining files below `config/`
+- both jobs: every other path, including new scripts, unrecognized root files,
+  and Git-quoted names
+
+The `test-repo` job sets `TEMPLATE_SKIP_SRC_TESTS=true` so its template-mode run
+skips the nested `src` lint/test (already covered by `test-code`). Only the exact
+value `true` skips; `release.yml` and local runs keep the full behavior.
 
 Rename detection is disabled so a move is evaluated as both a removal and an
 addition. Missing history, failed or empty diffs, and non-PR events run both
