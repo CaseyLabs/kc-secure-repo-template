@@ -2,8 +2,6 @@
 
 **A security-hardened repository template for new GitHub projects.**
 
-<!-- TOC -->
-
 - [Features](#features)
 - [Example Output](#example-output)
 - [Requirements](#requirements)
@@ -18,18 +16,16 @@
   - [Dependency Updates](#dependency-updates)
   - [Security Scanners](#security-scanners)
 
-<!-- /TOC -->
-
 ---
 
-## Features
+## Overview
 
 This repo template includes the following default options out of the box:
 
 ### Security
 
 - Scanning for vulnerabilities, misconfigurations, and leaked secrets (including Git history)
-- Reproducible builds with pinned SHA checksums to help prevent supply-chain attacks <sup>[[1]](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions)</sup>
+- Reproducible builds with pinned SHA checksums to help prevent supply-chain attacks [[1]](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions)
 
 ### Developer Workflow
 
@@ -87,9 +83,7 @@ make example    # Builds/tests/runs an example container
 ### Setup
 
 - Place your source code into the `src/` folder
-
 - Then customize the following files to fit your project/code base:
-
   - `config/project.cfg`
   - `Dockerfile`
   - `scripts/*.sh`
@@ -197,19 +191,14 @@ This template also uses third-party tools to automate the upgrade of project ima
 
 - [dependabot](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/dependabot-quickstart-guide):
   - `.github/dependabot.yml`
-
 - [renovate](https://github.com/renovatebot/renovate): will update any tools listed in `config/project.cfg`
   - `.github/renovate.json`
   - `.github/workflows/renovate.yml`
-
-  _Note_: Renovate requires a GitHub App to be installed in order to operate. To create one, run:
-
+  *Note*: Renovate requires a GitHub App to be installed in order to operate. To create one, run:
   ```shell
   .github/renovate/setup-github-app.sh
   ```
-
   - If you do not wish to use Renovate in your repo:
-
     - set `DEV_SCAN_ENABLE_RENOVATE=false` in `config/project.cfg`.
 
 ---
