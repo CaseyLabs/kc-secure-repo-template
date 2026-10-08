@@ -24,9 +24,12 @@ exception_file=${RELEASE_EXCEPTION_FILE:-config/release-exception.cfg}
 # This file is reviewed code in the release commit. Keep the accepted fields
 # explicit so an empty or expired exception cannot silently pass the gate.
 case "${exception_file}" in
-/*|./*|../*) . "${exception_file}" ;;
-*) . "./${exception_file}" ;;
+/*|./*|../*) ;;
+*) exception_file=./${exception_file} ;;
 esac
+# The reviewed exception path is selected at runtime.
+# shellcheck source=/dev/null
+. "${exception_file}"
 for field in RELEASE_EXCEPTION_ID RELEASE_EXCEPTION_OWNER RELEASE_EXCEPTION_RATIONALE \
 	RELEASE_EXCEPTION_RISK RELEASE_EXCEPTION_APPROVAL RELEASE_EXCEPTION_COMPENSATING \
 	RELEASE_EXCEPTION_EXPIRES RELEASE_EXCEPTION_TAG RELEASE_EXCEPTION_CONTROLS; do
@@ -44,7 +47,7 @@ expiry=$(date -u -d "${RELEASE_EXCEPTION_EXPIRES}" +%F 2>/dev/null) || {
 	printf 'invalid exception expiry\n' >&2; exit 1;
 }
 [ "${expiry}" = "${RELEASE_EXCEPTION_EXPIRES}" ] &&
-	[ "${expiry}" \> "$(date -u +%F)" ] || {
+	[ "$(date -u -d "${expiry}" +%s)" -gt "$(date -u +%s)" ] || {
 	printf 'release exception expired\n' >&2; exit 1;
 }
 for control in ${RELEASE_EXCEPTION_CONTROLS}; do

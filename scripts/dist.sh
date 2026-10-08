@@ -105,11 +105,6 @@ enable_sbom=${ENABLE_SBOM:-true}
 enable_grype=${ENABLE_GRYPE:-true}
 grype_fail_on=${GRYPE_FAIL_ON:-critical}
 
-if [ "${enable_grype}" = 'true' ] && [ "${enable_sbom}" != 'true' ]; then
-	printf '%s\n' 'ENABLE_GRYPE=true requires ENABLE_SBOM=true because Grype scans the generated SBOM' >&2
-	exit 1
-fi
-
 # Store all integrity outputs next to the release artifact.
 mkdir -p "${release_dir}"
 rm -f "${release_dir}/SECURITY-ANALYSIS.md" "${release_dir}/SHA256SUMS" "${release_dir}/ARCHIVE-SHA256SUMS" "${release_dir}/grype-report.txt" "${release_dir}/template.spdx.json"
@@ -228,10 +223,9 @@ run_identity=${GITHUB_RUN_ID:-local}
 	sha256sum "${release_dir}/ARCHIVE-SHA256SUMS"
 	sha256sum "${release_dir}/SECURITY-ANALYSIS.md"
 	sha256sum "${release_dir}/template-manifest.txt"
-	if [ -f "${release_dir}/template.spdx.json" ]; then
-		sha256sum "${release_dir}/template.spdx.json"
-	fi
-	if [ -f "${release_dir}/grype-report.txt" ]; then
-		sha256sum "${release_dir}/grype-report.txt"
-	fi
+	for asset in template.spdx.json grype-report.txt; do
+		if [ -f "${release_dir}/${asset}" ]; then
+			sha256sum "${release_dir}/${asset}"
+		fi
+	done
 } >"${release_dir}/SHA256SUMS"

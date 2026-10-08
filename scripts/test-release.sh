@@ -33,6 +33,11 @@ if RELEASE_PUBLICATION=true RELEASE_TAG=v1.2.3 ENABLE_SBOM=false ENABLE_GRYPE=fa
 	RELEASE_EXCEPTION_FILE="${test_dir}/expired" sh scripts/release-policy.sh >/dev/null 2>&1; then
 	fail 'expired exception passed'
 fi
+sed "s/2099-01-01/$(date -u +%F)/" "${test_dir}/exception" >"${test_dir}/expires-today"
+if RELEASE_PUBLICATION=true RELEASE_TAG=v1.2.3 ENABLE_SBOM=false ENABLE_GRYPE=false \
+	RELEASE_EXCEPTION_FILE="${test_dir}/expires-today" sh scripts/release-policy.sh >/dev/null 2>&1; then
+	fail 'exception expiring today passed'
+fi
 printf 'ENABLE_SBOM=false\nENABLE_GRYPE=false\n' >"${test_dir}/disabled.cfg"
 if RELEASE_PUBLICATION=true RELEASE_TAG=v1.2.3 \
 	RELEASE_EXCEPTION_FILE="${test_dir}/missing" \
