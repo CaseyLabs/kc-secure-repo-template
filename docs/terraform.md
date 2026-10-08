@@ -49,6 +49,9 @@ Repository hardening defaults:
 - non-fast-forward protection stays enabled
 - merge review requirements default to off so a single owner can keep working
   without needing a second approver
+- required status checks validate automation but do not supply independent
+  approval; teams can opt into the commented review profile in
+  `config/infra/terraform.tfvars.example` after assigning real code owners
 - public repositories get secret scanning and push protection through the
   `security_and_analysis` block
 - private or internal repositories depend on GitHub Secret Protection plan and
@@ -83,6 +86,23 @@ For organization or GitHub Enterprise repositories:
 - adjust provider settings before applying
 - adjust input defaults before applying
 - verify GitHub-side controls before relying on them
+
+Review ownership in a derived repository's `.github/CODEOWNERS`: assign real
+maintainers or teams to `.github/workflows/`, `scripts/`, `config/infra/`, and
+the release policy files (`scripts/release-policy.sh`,
+`config/release-exception.cfg`). Keep owners independent of routine authors
+where review must be independent. A sample entry is
+`/.github/workflows/ @your-org/release-maintainers`; replace the handle before
+enabling `require_code_owner_review`.
+
+After an authorized apply, inspect **Settings → Rules → Rulesets** for active
+default-branch and `v*` tag rulesets, bypass actors, approval count, stale and
+last-push approval, and the actual `test-code`, `test-repo`, and `scan-repo`
+contexts. Confirm the checks have run at least once. Inspect **Settings →
+General → Releases** for immutable releases; Terraform does not enable that
+setting. An unapplied plan supplies no protection. GitHub rulesets are available
+for public repositories on Free and for public/private repositories on Pro,
+Team, and Enterprise Cloud; verify the derived repository's plan and visibility.
 
 ## Provider Lock Maintenance
 

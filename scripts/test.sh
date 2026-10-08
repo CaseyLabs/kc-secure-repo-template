@@ -984,6 +984,7 @@ template | smoke | _regression)
 		test_template_skip_src_tests_flag
 		test_local_state_is_not_packaged
 		test_infra_preserves_lock_and_forwards_token
+		sh scripts/test-release.sh
 		test_optional_k8s_update_compat
 		test_optional_k8s_scan_skip
 		test_k8s_shell_inputs_are_not_executed

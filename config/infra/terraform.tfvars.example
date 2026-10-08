@@ -15,3 +15,11 @@ required_status_checks = [
 release_tag_patterns = [
   "refs/tags/v*",
 ]
+
+# Team profile (opt in only after assigning real CODEOWNERS and confirming
+# the plan supports these branch rules). Do not enable for a solo maintainer.
+# required_approving_review_count = 1
+# dismiss_stale_reviews_on_push   = true
+# require_last_push_approval      = true
+# require_code_owner_review       = true
+# required_review_thread_resolution = true
