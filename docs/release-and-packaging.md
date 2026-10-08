@@ -118,11 +118,12 @@ exceptions block publication. Remove a release-specific exception after use.
 
 `reassess-releases.yml` checks the three newest published stable releases weekly.
 It downloads their retained SBOMs and uses the pinned Grype image with current
-vulnerability data. It does not rebuild or change published bytes. A missing
-SBOM, scanner error, or critical finding fails the read-only workflow and leaves
-per-tag reports in an Actions artifact. Triage findings against the retained
-archive digest, quarantine consumption in downstream systems, notify affected
-consumers, and publish a replacement version through the normal release gates.
+vulnerability data. It does not rebuild or change published bytes. A release-list
+error, missing SBOM, scanner error, or critical finding fails the read-only workflow.
+Reports for scanned tags are retained in an Actions artifact. Triage findings
+against the retained archive digest, quarantine consumption in downstream
+systems, notify affected consumers, and publish a replacement version through
+the normal release gates.
 Do not overwrite an existing release. Remote revocation or deletion requires
 separate incident authorization.
 

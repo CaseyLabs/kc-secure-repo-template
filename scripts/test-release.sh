@@ -70,4 +70,27 @@ if PATH="${test_dir}/bin:${PATH}" MAKE_LOG="${test_dir}/make.log" MAKE_MUTATE=tr
 	sh scripts/validate-release-archive.sh "${test_dir}/archive.tar.gz" >/dev/null 2>&1; then
 	fail 'changed archive was accepted'
 fi
+# Release enumeration errors must fail the scheduled reassessment even when
+# jq would otherwise treat an empty API response as an empty release list.
+cat >"${test_dir}/bin/gh" <<'EOF'
+#!/bin/sh
+printf '[]\n'
+exit 42
+EOF
+chmod +x "${test_dir}/bin/gh"
+if PATH="${test_dir}/bin:${PATH}" GITHUB_REPOSITORY=example/repo GH_TOKEN=test-token \
+	REASSESS_OUTPUT_DIR="${test_dir}/reassessment" \
+	sh scripts/reassess-releases.sh >"${test_dir}/reassess-stdout" 2>"${test_dir}/reassess-stderr"; then
+	fail 'failed release enumeration passed reassessment'
+fi
+grep -q 'failed to list releases' "${test_dir}/reassess-stderr" || fail 'release enumeration failure was not explained'
+cat >"${test_dir}/bin/gh" <<'EOF'
+#!/bin/sh
+printf '[]\n'
+EOF
+chmod +x "${test_dir}/bin/gh"
+PATH="${test_dir}/bin:${PATH}" GITHUB_REPOSITORY=example/repo GH_TOKEN=test-token \
+	REASSESS_OUTPUT_DIR="${test_dir}/reassessment" \
+	sh scripts/reassess-releases.sh >/dev/null || fail 'empty release list should pass reassessment'
+[ ! -s "${test_dir}/reassessment/tags.txt" ] || fail 'empty release list produced tags'
 printf 'release policy and archive validation checks passed\n'

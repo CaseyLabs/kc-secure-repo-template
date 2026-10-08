@@ -15,8 +15,12 @@ trap 'rm -rf "${scanner_tmp}"' EXIT
 trap 'exit 1' HUP INT TERM
 # The release list is read-only; findings are retained in this workflow's
 # artifact and require human triage before any quarantine or replacement.
-gh release list --repo "${repo}" --limit 100 --json tagName,isDraft,isPrerelease,publishedAt |
-	jq -r '[.[] | select(.isDraft == false and .isPrerelease == false)] | sort_by(.publishedAt) | reverse | .[:3] | .[].tagName' >"${output_dir}/tags.txt"
+if ! gh release list --repo "${repo}" --limit 100 --json tagName,isDraft,isPrerelease,publishedAt >"${scanner_tmp}/releases.json"; then
+	printf 'failed to list releases for %s\n' "${repo}" >&2
+	exit 1
+fi
+jq -r '[.[] | select(.isDraft == false and .isPrerelease == false)] | sort_by(.publishedAt) | reverse | .[:3] | .[].tagName' \
+	"${scanner_tmp}/releases.json" >"${output_dir}/tags.txt"
 while IFS= read -r tag; do
 	[ -n "${tag}" ] || continue
 	case "${tag}" in *[!A-Za-z0-9._-]*) printf 'invalid release tag from API\n' >&2; exit 1 ;; esac
