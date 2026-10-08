@@ -10,10 +10,11 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
     │   └── setup-github-app.sh
     ├── renovate.json
     └── workflows
-    ├── release.yml
-    ├── renovate.yml
-    ├── scan.yml
-    └── test.yml
+        ├── release.yml
+        ├── reassess-releases.yml
+        ├── renovate.yml
+        ├── scan.yml
+        └── test.yml
 ```
 
 ## Folder Contents
@@ -76,6 +77,8 @@ container-first, pinned, scanned, and reviewable.
   - release tags must point at default-branch history.
   - existing releases are not clobbered.
   - release outputs include checksums, SBOMs, scans, and attestations.
+  - the packaged archive is smoke-tested and retained with its checksum in
+    the versioned GitHub Release.
 - Credentials stay scoped:
   - Renovate uses a GitHub App token.
   - workflows avoid broad default permissions.
@@ -122,23 +125,33 @@ Use the checked-in `scripts/ci-changes.sh` detector for small, fast PR gating:
 The detector compares a pull request's synthetic merge commit with its first
 parent. This measures the tree GitHub actually tests without rerunning jobs for
 changes that exist only because the base branch advanced. Checkout depth two is
-required so the merge and its parents are available. Non-PR events always run
-both test jobs.
+required so the merge and its parents are available. On main pushes, the
+detector job is skipped and both test jobs run.
 
-Classification is ordered and conservative:
+Classification is ordered and conservative (first match wins):
 
-- source, build, script, shared project configuration, lock configuration, and
-  the test workflow run both test jobs
-- the named root guidance and license files, plus Markdown below `docs/` and
-  `.agents/`, skip both expensive test jobs
-- other files below `config/` run only the generated-repository template tests
-- every other path runs both jobs, including unrecognized or Git-quoted names
+- both jobs: `src/`, `Dockerfile`, `.dockerignore`, `Makefile`,
+  `scripts/build.sh`, `scripts/test.sh`, `config/project.cfg`,
+  `config/lockfile.cfg`, and `.github/workflows/test.yml`; these are everything
+  `make test` in `src` mode executes
+- neither job: the named root guidance and license files, Markdown below
+  `docs/`, `.agents/` and `.claude/`, and `config/*/AGENTS.md` and
+  `config/*/CLAUDE.md`
+- `test-repo` only: the other known scripts (an explicit allowlist), everything
+  else under `.github/`, `.gitignore`, non-Markdown files below `.claude/` and
+  `.agents/`, and the remaining files below `config/`
+- both jobs: every other path, including new scripts, unrecognized root files,
+  and Git-quoted names
+
+The `test-repo` job sets `TEMPLATE_SKIP_SRC_TESTS=true` so its template-mode run
+skips the nested `src` lint/test (already covered by `test-code`). Only the exact
+value `true` skips; `release.yml` and local runs keep the full behavior.
 
 Rename detection is disabled so a move is evaluated as both a removal and an
-addition. Missing history, failed or empty diffs, and non-PR events run both
-jobs. A job is skipped only when successful detection emits its explicit
+addition. Missing history and failed or empty diffs run both jobs. A test job
+is skipped only when successful detection emits its explicit
 `false` output; missing or malformed output runs the job, while detector-step
-failure fails the required checks.
+failure fails the required checks on pull requests.
 
 When adapting this template, add a path to a narrower category only when its
 effects are understood and regression-tested. Prefer leaving new repository
@@ -199,6 +212,10 @@ directories are intentionally not exempt.
   - SBOMs
   - vulnerability scan reports
   - GitHub artifact attestations
+- Verify active GitHub rulesets after applying Terraform: required status
+  checks do not imply independent approval. Teams should configure actual
+  CODEOWNERS for workflows, scripts, infra, and release policy, then enable
+  stale-review dismissal and last-push approval. See `docs/terraform.md`.
 - Protect external registries:
   - enable tag immutability when supported
   - monitor unexpected tag or digest changes

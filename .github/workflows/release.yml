@@ -24,8 +24,12 @@ permissions:
 
 # Never cancel an in-flight release for a tag. Release jobs create artifacts and
 # attestations, so a maintainer should explicitly cancel them if needed.
+# Group by the release tag rather than github.ref: manual runs all share the
+# default-branch ref, so a ref-keyed group would let one queued manual release
+# replace another, while a tag push and a manual run for the same tag would race
+# in separate groups.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -53,13 +57,19 @@ jobs:
         run: |
           set -eu
 
+          # A shell glob such as v[0-9]*.[0-9]*.[0-9]* also accepts trailing
+          # text (spaces, slashes, suffixes), so first allow only tag
+          # characters (this also rejects embedded newlines, which grep would
+          # otherwise check line by line), then require the exact vX.Y.Z shape.
           case "${RELEASE_TAG}" in
-            v[0-9]*.[0-9]*.[0-9]*) ;;
-            *)
-              printf 'release_tag must look like vX.Y.Z, got %s\n' "${RELEASE_TAG}" >&2
-              exit 1
-              ;;
+            *[!v0-9.]*) release_tag_ok=false ;;
+            *) release_tag_ok=true ;;
           esac
+          if [ "${release_tag_ok}" != true ] ||
+            ! printf '%s\n' "${RELEASE_TAG}" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            printf 'release_tag must look like vX.Y.Z, got %s\n' "${RELEASE_TAG}" >&2
+            exit 1
+          fi
 
           if [ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]; then
             printf 'manual releases must run from the default branch (%s), got %s\n' \
@@ -72,10 +82,12 @@ jobs:
       - name: Verify release target is on default branch
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -eu
 
-          git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)" \
+            fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${DEFAULT_BRANCH}"; then
             printf 'release target %s (%s) is not reachable from origin/%s\n' \
               "${RELEASE_TAG}" "${GITHUB_SHA}" "${DEFAULT_BRANCH}" >&2
@@ -122,6 +134,10 @@ jobs:
           write_env ENABLE_SBOM "${VAR_ENABLE_SBOM:-$(read_config ENABLE_SBOM true)}"
           write_env ENABLE_GRYPE "${VAR_ENABLE_GRYPE:-$(read_config ENABLE_GRYPE true)}"
           write_env GRYPE_FAIL_ON "${VAR_GRYPE_FAIL_ON:-$(read_config GRYPE_FAIL_ON critical)}"
+      - name: Enforce release scan policy
+        env:
+          RELEASE_PUBLICATION: true
+        run: sh scripts/release-policy.sh
       # Tags can be created after CI has run, so release repeats the important
       # quality gates on the exact commit that will be or already is tagged.
       - name: Verify tests on release target
@@ -135,19 +151,24 @@ jobs:
       - name: Build release artifacts
         env:
           RELEASE_INTEGRITY_VERSION: ${{ env.RELEASE_TAG }}
+          RELEASE_PUBLICATION: true
         run: PROJECT_CFG_FILE=config/project.cfg make dist
+      - name: Validate packaged archive
+        run: sh scripts/validate-release-archive.sh
       # Tags created with GITHUB_TOKEN do not start a second tag-push workflow
       # run, so workflow_dispatch releases create the tag and publish in one run.
       - name: Ensure manual release tag exists
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -eu
 
           tag_ref="refs/tags/${RELEASE_TAG}"
-          if git ls-remote --exit-code --tags origin "${tag_ref}" >/dev/null 2>&1; then
-            git fetch --no-tags origin "+${tag_ref}:${tag_ref}"
+          git_auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)"
+          if git -c http.extraheader="${git_auth_header}" ls-remote --exit-code --tags origin "${tag_ref}" >/dev/null 2>&1; then
+            git -c http.extraheader="${git_auth_header}" fetch --no-tags origin "+${tag_ref}:${tag_ref}"
             tag_commit=$(git rev-list -n 1 "${RELEASE_TAG}")
             if [ "${tag_commit}" != "${GITHUB_SHA}" ]; then
               printf 'release tag %s already points at %s, expected %s\n' \
@@ -179,11 +200,16 @@ jobs:
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_PUBLICATION: true
         run: |
           set -eu
 
+          sh scripts/release-policy.sh
+          sha256sum -c dist/SHA256SUMS
+          sha256sum -c dist/ARCHIVE-SHA256SUMS
+
           release_assets=
-          for asset in dist/SECURITY-ANALYSIS.md dist/SHA256SUMS dist/template.spdx.json; do
+          for asset in dist/kc-secure-repo-template.tar.gz dist/ARCHIVE-SHA256SUMS dist/SECURITY-ANALYSIS.md dist/SHA256SUMS dist/template-manifest.txt dist/template.spdx.json dist/grype-report.txt; do
             if [ -f "${asset}" ]; then
               release_assets="${release_assets} ${asset}"
             fi

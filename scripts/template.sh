@@ -7,7 +7,6 @@ list_template_files() {
 
 	cat <<'EOF' |
 AGENTS.md
-CLAUDE.md
 Dockerfile
 LICENSE.md
 Makefile
@@ -25,10 +24,14 @@ EOF
 		while IFS= read -r path; do
 			[ -n "${path}" ] || continue
 			# Expand directories into their files, but skip build outputs and local state.
+			# Archives also work without Git metadata, so exclude environment secrets
+			# explicitly at every depth; only the exact .env.example name is public.
 			if [ -d "${path}" ]; then
 				find "${path}" \
 					-type d \( -name dist -o -name .terraform -o -name node_modules -o -name coverage -o -name .cache -o -name .tmp \) -prune -o \
 					-type f \
+					! -name '.env' \
+					\( ! -name '.env.*' -o -name '.env.example' \) \
 					! -name '*.tfstate' \
 					! -name '*.tfstate.*' \
 					! -name '*.tfplan' \

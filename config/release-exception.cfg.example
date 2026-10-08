@@ -1,0 +1,11 @@
+# Copy to config/release-exception.cfg only for a reviewed release exception.
+# The release commit must carry the approval and the exact affected tag.
+RELEASE_EXCEPTION_ID='EXAMPLE-123'
+RELEASE_EXCEPTION_OWNER='maintainer-name'
+RELEASE_EXCEPTION_RATIONALE='Explain why the normal gate cannot run.'
+RELEASE_EXCEPTION_RISK='Explain the unverified artifact risk.'
+RELEASE_EXCEPTION_APPROVAL='Link to the reviewed approval.'
+RELEASE_EXCEPTION_COMPENSATING='Describe independent checks and consumer notice.'
+RELEASE_EXCEPTION_EXPIRES='YYYY-MM-DD'
+RELEASE_EXCEPTION_TAG='vX.Y.Z'
+RELEASE_EXCEPTION_CONTROLS='sbom grype'

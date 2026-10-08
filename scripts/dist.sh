@@ -16,7 +16,31 @@ esac
 }
 
 # Load project build settings and scanner image references.
+publication_requested=${RELEASE_PUBLICATION:-false}
+env_enable_sbom=${ENABLE_SBOM-}
+env_enable_grype=${ENABLE_GRYPE-}
+env_grype_fail_on=${GRYPE_FAIL_ON-}
 . "${project_cfg_file}"
+RELEASE_PUBLICATION=${publication_requested}
+export RELEASE_PUBLICATION
+# Workflow variables are the effective release settings even if a derived
+# config supplies local defaults for the same fields.
+ENABLE_SBOM=${env_enable_sbom:-${ENABLE_SBOM:-true}}
+ENABLE_GRYPE=${env_enable_grype:-${ENABLE_GRYPE:-true}}
+GRYPE_FAIL_ON=${env_grype_fail_on:-${GRYPE_FAIL_ON:-critical}}
+export ENABLE_SBOM ENABLE_GRYPE GRYPE_FAIL_ON
+
+# A release cannot bypass the publication gate by changing local packaging
+# flags. Disposable local archives may still disable scanners for fast tests.
+sh ./scripts/release-policy.sh
+if [ "${RELEASE_PUBLICATION:-false}" = true ] &&
+	{ [ "${ENABLE_SBOM:-true}" = false ] || [ "${ENABLE_GRYPE:-true}" = false ]; }; then
+	exception_file=${RELEASE_EXCEPTION_FILE:-config/release-exception.cfg}
+	case "${exception_file}" in
+	/*|./*|../*) . "${exception_file}" ;;
+	*) . "./${exception_file}" ;;
+	esac
+fi
 
 # Allow derived repositories to swap the image name, Dockerfile, or build target.
 project_image=${PROJECT_IMAGE:-kc-secure-template-dev:local}
@@ -78,13 +102,13 @@ enable_sbom=${ENABLE_SBOM:-true}
 enable_grype=${ENABLE_GRYPE:-true}
 grype_fail_on=${GRYPE_FAIL_ON:-critical}
 
-if [ "${enable_grype}" = 'true' ] && [ "${enable_sbom}" != 'true' ]; then
-	printf '%s\n' 'ENABLE_GRYPE=true requires ENABLE_SBOM=true because Grype scans the generated SBOM' >&2
-	exit 1
-fi
-
 # Store all integrity outputs next to the release artifact.
 mkdir -p "${release_dir}"
+# The template helper always writes its manifest under dist/. Keep a copy in
+# the evidence directory, avoiding a same-file copy for equivalent paths.
+if [ "$(cd "${release_dir}" && pwd -P)" != "$(cd dist && pwd -P)" ]; then
+	cp dist/template-manifest.txt "${release_dir}/template-manifest.txt"
+fi
 rm -f "${release_dir}/SECURITY-ANALYSIS.md" "${release_dir}/SHA256SUMS" "${release_dir}/ARCHIVE-SHA256SUMS" "${release_dir}/grype-report.txt" "${release_dir}/template.spdx.json"
 
 # Generate an SBOM first because Grype can scan it later.
@@ -138,6 +162,12 @@ if [ "${enable_grype}" = 'true' ]; then
 		-o table >"${release_dir}/grype-report.txt"
 fi
 
+# Record the final archive bytes before writing evidence that names them.
+sha256sum "${release_target}" >"${release_dir}/ARCHIVE-SHA256SUMS"
+archive_digest=$(cut -d ' ' -f 1 "${release_dir}/ARCHIVE-SHA256SUMS")
+source_commit=${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || printf unknown)}
+run_identity=${GITHUB_RUN_ID:-local}
+
 # Write a human-readable summary that records what controls ran for this release build.
 {
 	printf '# Release Integrity Report\n\n'
@@ -147,15 +177,28 @@ fi
 	printf -- '- Version: `%s`\n' "${release_version}"
 	printf -- '- Target: `%s`\n' "${release_target}"
 	printf -- '- Output directory: `%s`\n\n' "${release_dir}"
+	printf -- '- Archive SHA-256: `%s`\n' "${archive_digest}"
+	printf -- '- Source commit: `%s`\n' "${source_commit}"
+	printf -- '- Build run: `%s`\n' "${run_identity}"
+	if [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
+		printf -- '- Workflow evidence: %s/%s/actions/runs/%s\n' "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}"
+	fi
+	printf '\n'
 	printf '## Published Release Assets\n\n'
+	printf -- '- `%s/%s`\n' "${release_dir}" "$(basename "${release_target}")"
+	printf -- '- `%s/ARCHIVE-SHA256SUMS`\n' "${release_dir}"
 	printf -- '- `%s/SECURITY-ANALYSIS.md`\n' "${release_dir}"
 	printf -- '- `%s/SHA256SUMS`\n' "${release_dir}"
+	printf -- '- `%s/template-manifest.txt`\n' "${release_dir}"
 	if [ "${enable_sbom}" = 'true' ]; then
 		printf -- '- `%s/template.spdx.json`\n' "${release_dir}"
 	fi
+	if [ "${enable_grype}" = 'true' ]; then
+		printf -- '- `%s/grype-report.txt`\n' "${release_dir}"
+	fi
 	printf '\n## Workflow Artifact Bundle\n\n'
 	printf 'The complete `%s` directory is retained as the release workflow artifact bundle for CI evidence.\n\n' "${release_dir}"
-	printf -- '- `%s/ARCHIVE-SHA256SUMS` verifies the generated template archive in the workflow bundle.\n\n' "${release_dir}"
+	printf -- '- `%s/ARCHIVE-SHA256SUMS` verifies the generated template archive.\n\n' "${release_dir}"
 	printf '## Controls\n\n'
 	printf -- '- Checksums: `%s/SHA256SUMS` covers the published release assets generated before the checksum file.\n' "${release_dir}"
 	if [ "${enable_sbom}" = 'true' ]; then
@@ -168,6 +211,7 @@ fi
 	else
 		printf -- '- Vulnerability scan: skipped.\n'
 	fi
+	printf -- '- Publication exception: `%s`.\n' "${RELEASE_EXCEPTION_ID:-none}"
 	if [ -f "${release_dir}/grype-report.txt" ]; then
 		printf '\n## Vulnerability Scan\n\n```\n'
 		cat "${release_dir}/grype-report.txt"
@@ -177,12 +221,13 @@ fi
 
 # Hash published release assets that exist before the checksum file is written.
 {
+	sha256sum "${release_target}"
+	sha256sum "${release_dir}/ARCHIVE-SHA256SUMS"
 	sha256sum "${release_dir}/SECURITY-ANALYSIS.md"
-	if [ -f "${release_dir}/template.spdx.json" ]; then
-		sha256sum "${release_dir}/template.spdx.json"
-	fi
+	sha256sum "${release_dir}/template-manifest.txt"
+	for asset in template.spdx.json grype-report.txt; do
+		if [ -f "${release_dir}/${asset}" ]; then
+			sha256sum "${release_dir}/${asset}"
+		fi
+	done
 } >"${release_dir}/SHA256SUMS"
-
-# The archive stays in the Actions bundle; keep its checksum separate so users
-# downloading only published evidence can still verify SHA256SUMS completely.
-sha256sum dist/kc-secure-repo-template.tar.gz >"${release_dir}/ARCHIVE-SHA256SUMS"

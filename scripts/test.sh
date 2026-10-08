@@ -24,6 +24,30 @@ fail() {
 	exit 1
 }
 
+# CI opts out of the nested src run with TEMPLATE_SKIP_SRC_TESTS=true because the
+# separate test-code job already covers it. Only the exact value "true" skips;
+# anything else (unset, false, TRUE, 1) keeps the full local/release behavior.
+template_skip_src_tests() {
+	[ "${TEMPLATE_SKIP_SRC_TESTS:-}" = true ]
+}
+
+test_template_skip_src_tests_flag() {
+	(
+		unset TEMPLATE_SKIP_SRC_TESTS
+		! template_skip_src_tests || fail 'unset flag should not skip src tests'
+	)
+	for value in false TRUE 1 yes ''; do
+		(
+			TEMPLATE_SKIP_SRC_TESTS=${value}
+			! template_skip_src_tests || fail "flag value '${value}' should not skip src tests"
+		)
+	done
+	(
+		TEMPLATE_SKIP_SRC_TESTS=true
+		template_skip_src_tests || fail 'flag value true should skip src tests'
+	)
+}
+
 assert_ci_change_detection() {
 	name=$1
 	changed_files=$2
@@ -55,9 +79,24 @@ Dockerfile
 .dockerignore
 Makefile
 scripts/build.sh
+scripts/test.sh
 config/project.cfg
 config/lockfile.cfg
 .github/workflows/test.yml' true true
+	assert_ci_change_detection 'agent skill prose' '.claude/skills/x/SKILL.md' false false
+	assert_ci_change_detection 'infra subtree AGENTS.md' 'config/infra/AGENTS.md' false false
+	assert_ci_change_detection 'k8s subtree CLAUDE.md' 'config/k8s/CLAUDE.md' false false
+	assert_ci_change_detection 'repo-only script k8s' 'scripts/k8s.sh' false true
+	assert_ci_change_detection 'repo-only script scan' 'scripts/scan.sh' false true
+	assert_ci_change_detection 'non-test workflow' '.github/workflows/scan.yml' false true
+	assert_ci_change_detection 'github config' '.github/renovate.json' false true
+	assert_ci_change_detection 'gitignore' '.gitignore' false true
+	assert_ci_change_detection 'agent non-Markdown file' '.agents/skills/x/agents/openai.yaml' false true
+	assert_ci_change_detection 'unlisted new script' 'scripts/new-unlisted.sh' true true
+	assert_ci_change_detection 'mixed repo-only script and source' 'scripts/k8s.sh
+src/cmd/app/main.go' true true
+	assert_ci_change_detection 'mixed prose and repo-only script' 'README.md
+scripts/scan.sh' false true
 	assert_ci_change_detection 'template configuration' 'config/k8s/chart/values.yaml' false true
 	assert_ci_change_detection 'mixed prose and template configuration' 'docs/github-ci.md
 config/infra/versions.tf' false true
@@ -105,6 +144,8 @@ EOF
 
 	grep -Fq "outputs.test_code != 'false'" .github/workflows/test.yml || fail 'test-code should run for missing or malformed detector output'
 	grep -Fq "outputs.test_repo != 'false'" .github/workflows/test.yml || fail 'test-repo should run for missing or malformed detector output'
+	grep -Fq "if: github.event_name == 'pull_request'" .github/workflows/test.yml || fail 'change detection should run only for pull requests'
+	grep -Fq "if: \${{ github.event_name == 'pull_request' && needs.detect-test-changes.result != 'success' }}" .github/workflows/test.yml || fail 'main pushes should not fail when change detection is skipped'
 }
 
 test_ci_change_detection_git_history() {
@@ -361,9 +402,23 @@ test_local_state_is_not_packaged() {
 	mkdir -p config/infra src
 	: >config/infra/terraform.tfvars
 	: >src/app
+	# Exercise the packaging code with local credentials in a disposable tree.
+	mkdir -p src/nested
+	for secret in src/.env src/nested/.env.production config/.env.local; do
+		printf '%s\n' 'PACKAGING_TEST_SECRET=placeholder-only' >"${secret}"
+	done
+	printf '%s\n' 'APP_TOKEN=replace-me' >src/nested/.env.example
 	sh ./scripts/template.sh files >${TMPDIR}/template-files-local-state.txt
 	! grep -qx 'config/infra/terraform.tfvars' ${TMPDIR}/template-files-local-state.txt || fail 'template files should exclude local Terraform variable files'
 	! grep -qx 'src/app' ${TMPDIR}/template-files-local-state.txt || fail 'template files should exclude the generated example binary'
+	sh ./scripts/template.sh release
+	tar -tzf dist/kc-secure-repo-template.tar.gz >"${TMPDIR}/template-archive-local-state.txt"
+	for listing in "${TMPDIR}/template-files-local-state.txt" "${TMPDIR}/template-archive-local-state.txt"; do
+		for secret in src/.env src/nested/.env.production config/.env.local; do
+			! grep -Fxq "${secret}" "${listing}" || fail "packaging should exclude ${secret}"
+		done
+		grep -Fxq 'src/nested/.env.example' "${listing}" || fail 'packaging should preserve environment examples'
+	done
 	rm -f config/infra/terraform.tfvars src/app
 }
 
@@ -928,8 +983,10 @@ template | smoke | _regression)
 		test_ci_change_detection_rules
 		test_ci_change_detection_output_contract
 		test_ci_change_detection_git_history
+		test_template_skip_src_tests_flag
 		test_local_state_is_not_packaged
 		test_infra_preserves_lock_and_forwards_token
+		sh scripts/test-release.sh
 		test_optional_k8s_update_compat
 		test_optional_k8s_scan_skip
 		test_k8s_shell_inputs_are_not_executed
@@ -939,7 +996,11 @@ template | smoke | _regression)
 	fi
 	# Exercise the shipped build/test code unchanged with the current image locks.
 	make build
-	make test TEST_MODE=src
+	if template_skip_src_tests; then
+		printf '%s\n' 'Skipping nested src tests (TEMPLATE_SKIP_SRC_TESTS=true); they are covered by the test-code job.'
+	else
+		make test TEST_MODE=src
+	fi
 	. ./config/project.cfg
 	case "${PROJECT_NAME}" in
 	*-dev) regression_image="${PROJECT_NAME%-dev}-example:local" ;;

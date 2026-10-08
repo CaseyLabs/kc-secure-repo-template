@@ -120,6 +120,8 @@ agent guidance that described the removed area.
   [`docs/k8s.md`](../docs/k8s.md).
 - Terraform-backed GitHub repository hardening lives under `config/infra/`; see
   [`docs/terraform.md`](../docs/terraform.md).
+- For a derived application that publishes images and deploys, see
+  [`docs/application-delivery.md`](application-delivery.md).
 - GitHub workflow and repository-control guidance lives in
   [`docs/github-ci.md`](github-ci.md).
 

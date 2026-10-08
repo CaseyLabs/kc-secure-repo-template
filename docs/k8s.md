@@ -20,6 +20,10 @@ If you are new to Kubernetes:
 
 The chart keeps security-sensitive settings explicit and exposes deployment
 choices through Helm values instead of hard-coding cluster-specific behavior.
+For production, set `K8S_IMAGE_REPOSITORY` to the approved registry path and
+`K8S_IMAGE_TAG` to `sha256:<approved-digest>`; the chart renders
+`repository@sha256:...`. Keep convenient tags for local development only. See
+the [optional application delivery guide](application-delivery.md).
 
 ## Root Workflow
 

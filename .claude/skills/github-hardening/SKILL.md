@@ -1,6 +1,6 @@
 ---
 name: github-hardening
-description: Use when updating or reviewing GitHub-side hardening guidance for derived repositories, including required settings, rulesets, scanning, review protections, and workflow permissions. Use terraform-hardening instead for Terraform-backed changes under config/infra. Do not use for ordinary in-repo implementation changes unless the task is primarily about documented GitHub controls.
+description: Review or update GitHub repository hardening guidance and its Terraform implementation under config/infra, including rulesets, required checks, scanning, permissions, provider pins, and plan/apply safety. Do not use for ordinary app code, generic template adaptation, release integrity, or routine workflow validation.
 ---
 
 Read and follow the [canonical workflow](../../../.agents/skills/github-hardening/SKILL.md)

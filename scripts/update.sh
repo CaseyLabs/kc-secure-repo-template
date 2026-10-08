@@ -23,7 +23,7 @@ require_command() {
 }
 
 # This script resolves image digests and rewrites tracked files, so verify prerequisites first.
-for cmd in awk curl jq perl sed tr head; do
+for cmd in awk curl grep jq perl sed tr head; do
 	require_command "${cmd}"
 done
 
@@ -32,59 +32,91 @@ done
 
 # Docker Hub requires a short-lived token before manifest metadata can be fetched.
 docker_hub_token() {
-	curl -fsSL "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$1:pull" | jq -r '.token'
+	token_response=$(curl -fsSL "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$1:pull") || return 1
+	token=$(printf '%s\n' "${token_response}" | jq -er '.token | select(type == "string" and length > 0)') || return 1
+	[ -n "${token}" ] || {
+		printf 'registry returned an empty Docker Hub token for %s\n' "$1" >&2
+		return 1
+	}
+	printf '%s\n' "${token}"
 }
 
 # Resolve a Docker Hub tag into its immutable digest.
 docker_hub_digest() {
-	token=$(docker_hub_token "$1")
-	curl -fsSI \
+	token=$(docker_hub_token "$1") || return 1
+	headers=$(curl -fsSI \
 		-H "Authorization: Bearer ${token}" \
 		-H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-		"https://registry-1.docker.io/v2/$1/manifests/$2" |
-		tr -d '\r' | sed -n 's/^docker-content-digest: //Ip' | head -n 1
+		"https://registry-1.docker.io/v2/$1/manifests/$2") || return 1
+	digest=$(printf '%s\n' "${headers}" | tr -d '\r' | sed -n 's/^docker-content-digest: //Ip' | head -n 1)
+	validate_digest "${digest}" "$1:$2"
+}
+
+validate_digest() {
+	case "$1" in
+		sha256:*) digest_hex=${1#sha256:} ;;
+		*) digest_hex='' ;;
+	esac
+	if [ "${#digest_hex}" -ne 64 ] || ! printf '%s\n' "${digest_hex}" | grep -Eq '^[[:xdigit:]]{64}$'; then
+		printf 'registry returned an invalid digest for %s\n' "$2" >&2
+		return 1
+	fi
+	printf 'sha256:%s\n' "${digest_hex}"
 }
 
 # GHCR uses a similar API, but with a different token endpoint.
 ghcr_digest() {
-	token=$(curl -fsSL "https://ghcr.io/token?scope=repository:$1:pull" | jq -r '.token')
-	curl -fsSI \
+	token_response=$(curl -fsSL "https://ghcr.io/token?scope=repository:$1:pull") || return 1
+	token=$(printf '%s\n' "${token_response}" | jq -er '.token | select(type == "string" and length > 0)') || return 1
+	headers=$(curl -fsSI \
 		-H "Authorization: Bearer ${token}" \
 		-H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-		"https://ghcr.io/v2/$1/manifests/$2" |
-		tr -d '\r' | sed -n 's/^docker-content-digest: //Ip' | head -n 1
+		"https://ghcr.io/v2/$1/manifests/$2") || return 1
+	digest=$(printf '%s\n' "${headers}" | tr -d '\r' | sed -n 's/^docker-content-digest: //Ip' | head -n 1)
+	validate_digest "${digest}" "$1:$2"
 }
 
 # Accept common image formats and return a digest-pinned reference for each one.
 resolve_image() {
 	case "$1" in
 	*@sha256:*)
-		printf '%s\n' "$1"
+		digest=$(validate_digest "${1##*@}" "$1") || return 1
+		resolved_image="${1%@*}@${digest}"
 		;;
 	ghcr.io/*:*)
 		repo=${1#ghcr.io/}
 		tag=${repo##*:}
 		repo=${repo%:*}
-		printf 'ghcr.io/%s@%s\n' "${repo}" "$(ghcr_digest "${repo}" "${tag}")"
+		digest=$(ghcr_digest "${repo}" "${tag}") || return 1
+		resolved_image="ghcr.io/${repo}@${digest}"
 		;;
 	ghcr.io/*)
 		repo=${1#ghcr.io/}
-		printf 'ghcr.io/%s@%s\n' "${repo}" "$(ghcr_digest "${repo}" latest)"
+		digest=$(ghcr_digest "${repo}" latest) || return 1
+		resolved_image="ghcr.io/${repo}@${digest}"
 		;;
 	*/*:*)
 		tag=${1##*:}
 		repo=${1%:*}
-		printf '%s@%s\n' "$1" "$(docker_hub_digest "${repo}" "${tag}")"
+		digest=$(docker_hub_digest "${repo}" "${tag}") || return 1
+		resolved_image="${1}@${digest}"
 		;;
 	*:*)
 		tag=${1##*:}
 		repo=${1%:*}
-		printf '%s@%s\n' "$1" "$(docker_hub_digest "library/${repo}" "${tag}")"
+		digest=$(docker_hub_digest "library/${repo}" "${tag}") || return 1
+		resolved_image="${1}@${digest}"
 		;;
 	*)
-		printf '%s@%s\n' "$1" "$(docker_hub_digest "library/${1}" latest)"
+		digest=$(docker_hub_digest "library/${1}" latest) || return 1
+		resolved_image="${1}@${digest}"
 		;;
 	esac
+	case "${resolved_image}" in
+		*@sha256:*) ;;
+		*) printf 'resolved image has no valid digest: %s\n' "${1}" >&2; return 1 ;;
+	esac
+	printf '%s\n' "${resolved_image}"
 }
 
 # Resolve every reviewed image selector to the exact digest committed in the repo.
