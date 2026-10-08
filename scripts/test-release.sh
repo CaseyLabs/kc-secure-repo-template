@@ -24,6 +24,25 @@ RELEASE_EXCEPTION_CONTROLS='sbom grype'
 EOF
 RELEASE_PUBLICATION=true RELEASE_TAG=v1.2.3 ENABLE_SBOM=false ENABLE_GRYPE=false \
 	RELEASE_EXCEPTION_FILE="${test_dir}/exception" sh scripts/release-policy.sh >/dev/null || fail 'valid exception failed'
+# Supported thresholds remain valid when either or both scans are disabled.
+for severity in critical high medium low negligible; do
+	for sbom in true false; do
+		ENABLE_SBOM=${sbom} ENABLE_GRYPE=false GRYPE_FAIL_ON=${severity} \
+			sh scripts/release-policy.sh || fail 'local disabled scans rejected supported severity'
+		RELEASE_PUBLICATION=true RELEASE_TAG=v1.2.3 ENABLE_SBOM=${sbom} \
+			ENABLE_GRYPE=false GRYPE_FAIL_ON=${severity} \
+			RELEASE_EXCEPTION_FILE="${test_dir}/exception" sh scripts/release-policy.sh >/dev/null ||
+			fail 'valid exception rejected supported severity'
+	done
+done
+if ENABLE_SBOM=false ENABLE_GRYPE=false GRYPE_FAIL_ON=invalid \
+	sh scripts/release-policy.sh >/dev/null 2>&1; then
+	fail 'invalid severity passed with disabled scans'
+fi
+if ENABLE_SBOM=false ENABLE_GRYPE=true sh scripts/release-policy.sh >/dev/null 2>&1; then
+	fail 'Grype without SBOM passed'
+fi
+
 if RELEASE_PUBLICATION=true RELEASE_TAG=v2.0.0 ENABLE_SBOM=false ENABLE_GRYPE=false \
 	RELEASE_EXCEPTION_FILE="${test_dir}/exception" sh scripts/release-policy.sh >/dev/null 2>&1; then
 	fail 'wrong-tag exception passed'
@@ -44,6 +63,31 @@ if RELEASE_PUBLICATION=true RELEASE_TAG=v1.2.3 \
 	sh scripts/dist.sh "${test_dir}/disabled.cfg" >/dev/null 2>&1; then
 	fail 'config-file scanner defaults bypassed publication policy'
 fi
+
+# Run the real archive generator with Docker stubbed inside this container.
+# Isolate packaging so evidence from an earlier run cannot satisfy this check.
+mkdir -p "${test_dir}/packaging" "${test_dir}/packaging-bin"
+sh scripts/template.sh files >"${test_dir}/files"
+tar -cf "${test_dir}/repo.tar" -T "${test_dir}/files"
+tar -xf "${test_dir}/repo.tar" -C "${test_dir}/packaging"
+cat >"${test_dir}/packaging-bin/docker" <<'EOF'
+#!/bin/sh
+case "$1" in
+build) exit 0 ;;
+run) exec sh scripts/template.sh release ;;
+*) exit 1 ;;
+esac
+EOF
+chmod +x "${test_dir}/packaging-bin/docker"
+(
+	cd "${test_dir}/packaging"
+	for evidence_dir in dist ./dist custom-evidence; do
+		PATH="${test_dir}/packaging-bin:${PATH}" ENABLE_SBOM=false ENABLE_GRYPE=false \
+			RELEASE_INTEGRITY_DIST_DIR=${evidence_dir} make dist >/dev/null || exit 1
+		cmp dist/template-manifest.txt "${evidence_dir}/template-manifest.txt" || exit 1
+		sha256sum -c "${evidence_dir}/SHA256SUMS" >/dev/null || exit 1
+	done
+) || fail 'packaging evidence manifest or checksums failed'
 
 # A fake make records the bounded sequence without requiring a second Docker
 # build in this focused test. Production template mode tests real Docker.

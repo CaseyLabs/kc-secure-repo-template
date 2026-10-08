@@ -107,6 +107,11 @@ grype_fail_on=${GRYPE_FAIL_ON:-critical}
 
 # Store all integrity outputs next to the release artifact.
 mkdir -p "${release_dir}"
+# The template helper always writes its manifest under dist/. Keep a copy in
+# the evidence directory, avoiding a same-file copy for equivalent paths.
+if [ "$(cd "${release_dir}" && pwd -P)" != "$(cd dist && pwd -P)" ]; then
+	cp dist/template-manifest.txt "${release_dir}/template-manifest.txt"
+fi
 rm -f "${release_dir}/SECURITY-ANALYSIS.md" "${release_dir}/SHA256SUMS" "${release_dir}/ARCHIVE-SHA256SUMS" "${release_dir}/grype-report.txt" "${release_dir}/template.spdx.json"
 
 # Generate an SBOM first because Grype can scan it later.

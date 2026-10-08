@@ -6,8 +6,13 @@ enable_sbom=${ENABLE_SBOM:-true}
 enable_grype=${ENABLE_GRYPE:-true}
 grype_fail_on=${GRYPE_FAIL_ON:-critical}
 
-case "${enable_sbom}:${enable_grype}:${grype_fail_on}" in
-true:true:critical|true:true:high|true:true:medium|true:true:low|true:true:negligible|true:false:critical|false:false:critical) ;;
+case "${enable_sbom}:${enable_grype}" in
+true:true|true:false|false:false) ;;
+*) printf 'invalid release scan settings\n' >&2; exit 1 ;;
+esac
+# Validate the configured threshold even when Grype is temporarily disabled.
+case "${grype_fail_on}" in
+critical|high|medium|low|negligible) ;;
 *) printf 'invalid release scan settings\n' >&2; exit 1 ;;
 esac
 
