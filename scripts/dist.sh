@@ -25,12 +25,9 @@ RELEASE_PUBLICATION=${publication_requested}
 export RELEASE_PUBLICATION
 # Workflow variables are the effective release settings even if a derived
 # config supplies local defaults for the same fields.
-if [ -n "${env_enable_sbom}" ]; then ENABLE_SBOM=${env_enable_sbom}; export ENABLE_SBOM; fi
-if [ -n "${env_enable_grype}" ]; then ENABLE_GRYPE=${env_enable_grype}; export ENABLE_GRYPE; fi
-if [ -n "${env_grype_fail_on}" ]; then GRYPE_FAIL_ON=${env_grype_fail_on}; export GRYPE_FAIL_ON; fi
-ENABLE_SBOM=${ENABLE_SBOM:-true}
-ENABLE_GRYPE=${ENABLE_GRYPE:-true}
-GRYPE_FAIL_ON=${GRYPE_FAIL_ON:-critical}
+ENABLE_SBOM=${env_enable_sbom:-${ENABLE_SBOM:-true}}
+ENABLE_GRYPE=${env_enable_grype:-${ENABLE_GRYPE:-true}}
+GRYPE_FAIL_ON=${env_grype_fail_on:-${GRYPE_FAIL_ON:-critical}}
 export ENABLE_SBOM ENABLE_GRYPE GRYPE_FAIL_ON
 
 # A release cannot bypass the publication gate by changing local packaging
