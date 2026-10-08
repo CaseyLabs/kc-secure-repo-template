@@ -27,6 +27,8 @@ concurrency:
 jobs:
   detect-test-changes:
     name: detect-test-changes
+    # Main always runs both test jobs, so it does not need a runner to inspect paths.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     outputs:
       test_code: ${{ steps.changes.outputs.test_code }}
@@ -54,7 +56,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Require successful change detection
-        if: ${{ needs.detect-test-changes.result != 'success' }}
+        if: ${{ github.event_name == 'pull_request' && needs.detect-test-changes.result != 'success' }}
         run: |
           printf 'detect-test-changes did not complete successfully\n' >&2
           exit 1
@@ -81,7 +83,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Require successful change detection
-        if: ${{ needs.detect-test-changes.result != 'success' }}
+        if: ${{ github.event_name == 'pull_request' && needs.detect-test-changes.result != 'success' }}
         run: |
           printf 'detect-test-changes did not complete successfully\n' >&2
           exit 1

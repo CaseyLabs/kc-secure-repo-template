@@ -144,6 +144,8 @@ EOF
 
 	grep -Fq "outputs.test_code != 'false'" .github/workflows/test.yml || fail 'test-code should run for missing or malformed detector output'
 	grep -Fq "outputs.test_repo != 'false'" .github/workflows/test.yml || fail 'test-repo should run for missing or malformed detector output'
+	grep -Fq "if: github.event_name == 'pull_request'" .github/workflows/test.yml || fail 'change detection should run only for pull requests'
+	grep -Fq "if: \${{ github.event_name == 'pull_request' && needs.detect-test-changes.result != 'success' }}" .github/workflows/test.yml || fail 'main pushes should not fail when change detection is skipped'
 }
 
 test_ci_change_detection_git_history() {

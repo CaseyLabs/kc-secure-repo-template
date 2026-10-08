@@ -125,8 +125,8 @@ Use the checked-in `scripts/ci-changes.sh` detector for small, fast PR gating:
 The detector compares a pull request's synthetic merge commit with its first
 parent. This measures the tree GitHub actually tests without rerunning jobs for
 changes that exist only because the base branch advanced. Checkout depth two is
-required so the merge and its parents are available. Non-PR events always run
-both test jobs.
+required so the merge and its parents are available. On main pushes, the
+detector job is skipped and both test jobs run.
 
 Classification is ordered and conservative (first match wins):
 
@@ -148,10 +148,10 @@ skips the nested `src` lint/test (already covered by `test-code`). Only the exac
 value `true` skips; `release.yml` and local runs keep the full behavior.
 
 Rename detection is disabled so a move is evaluated as both a removal and an
-addition. Missing history, failed or empty diffs, and non-PR events run both
-jobs. A job is skipped only when successful detection emits its explicit
+addition. Missing history and failed or empty diffs run both jobs. A test job
+is skipped only when successful detection emits its explicit
 `false` output; missing or malformed output runs the job, while detector-step
-failure fails the required checks.
+failure fails the required checks on pull requests.
 
 When adapting this template, add a path to a narrower category only when its
 effects are understood and regression-tested. Prefer leaving new repository
