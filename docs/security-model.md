@@ -52,6 +52,7 @@ Some protections are enforced by files in this repository:
 - pinned image locks in `config/lockfile.cfg`
 - release tag ancestry checks in `.github/workflows/release.yml`
 - release artifact generation in `scripts/dist.sh`
+- publication exception validation in `scripts/release-policy.sh`
 - optional Terraform hardening defaults under `config/infra/`
 
 Other protections depend on GitHub repository or organization settings:
@@ -66,6 +67,19 @@ Other protections depend on GitHub repository or organization settings:
 
 Document the GitHub-side controls for each derived repository so maintainers know
 which protections are actually active.
+
+## Solo-maintainer review exception
+
+- Owner: adopting repository owner; assign a named maintainer during adoption.
+- Rationale: the template must remain usable by a single maintainer.
+- Risk: the same person can author and merge a change; required checks do not
+  establish independent review.
+- Review date: review at adoption and at least every 90 days; replace this
+  exception when a second maintainer joins.
+- Compensating controls: required `test-code`, `test-repo`, and `scan-repo`
+  checks; pinned workflows and images; release ancestry, scans, archive smoke
+  test, checksums, and attestations. These reduce risk but do not replace review.
+- Approval: the adopting repository owner records acceptance in its own policy.
 
 ## Credentials
 

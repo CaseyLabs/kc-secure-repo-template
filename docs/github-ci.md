@@ -11,6 +11,7 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
     ├── renovate.json
     └── workflows
         ├── release.yml
+        ├── reassess-releases.yml
         ├── renovate.yml
         ├── scan.yml
         └── test.yml
@@ -76,6 +77,8 @@ container-first, pinned, scanned, and reviewable.
   - release tags must point at default-branch history.
   - existing releases are not clobbered.
   - release outputs include checksums, SBOMs, scans, and attestations.
+  - the packaged archive is smoke-tested and retained with its checksum in
+    the versioned GitHub Release.
 - Credentials stay scoped:
   - Renovate uses a GitHub App token.
   - workflows avoid broad default permissions.
@@ -209,6 +212,10 @@ directories are intentionally not exempt.
   - SBOMs
   - vulnerability scan reports
   - GitHub artifact attestations
+- Verify active GitHub rulesets after applying Terraform: required status
+  checks do not imply independent approval. Teams should configure actual
+  CODEOWNERS for workflows, scripts, infra, and release policy, then enable
+  stale-review dismissal and last-push approval. See `docs/terraform.md`.
 - Protect external registries:
   - enable tag immutability when supported
   - monitor unexpected tag or digest changes

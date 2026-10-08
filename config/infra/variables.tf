@@ -124,7 +124,7 @@ variable "enable_secret_scanning_push_protection" {
 }
 
 variable "required_approving_review_count" {
-  description = "Required pull request approvals."
+  description = "Required pull request approvals. Solo default is zero; teams should set at least one."
   type        = number
   default     = 0
 }

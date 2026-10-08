@@ -10,6 +10,7 @@
 | [GitHub Configuration](github-ci.md)                         | GitHub Actions, workflow policy, credentials, and repo configuration.      |
 | [GitOps Naming Conventions](gitops-conventions.md)           | Recommended branch, PR, issue, label, commit, and release naming.          |
 | [Release & Packaging](release-and-packaging.md)              | Template outputs, SBOMs, checksums, and attestations.                      |
+| [Application Delivery](application-delivery.md)              | Optional image promotion and deployment guidance for derived projects.     |
 | [Dependency Updates](dependency-updates.md)                  | Dependabot, Renovate, cooldowns, and lock refresh strategies.              |
 | [AI Agent Support](ai-agent-support.md)                      | Optional AI agent guidance included with the template.                     |
 | [Terraform Support](terraform.md)                            | Terraform-based GitHub repository hardening workspace.                     |

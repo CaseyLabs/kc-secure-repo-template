@@ -1,0 +1,32 @@
+# Re-scan retained release SBOMs as vulnerability intelligence changes.
+name: reassess-releases.yml
+on:
+  schedule:
+    - cron: '17 8 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: reassess-releases
+  cancel-in-progress: false
+jobs:
+  reassess:
+    name: reassess-releases
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out policy and image locks
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Reassess retained release evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: sh scripts/reassess-releases.sh
+      - name: Retain reassessment report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-reassessment
+          path: .tmp/reassessment/
+          if-no-files-found: warn
