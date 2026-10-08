@@ -31,9 +31,36 @@ same bytes when inputs match.
 - `dist/template-manifest.txt`: generated manifest of template files.
 
 The security summary records the archive digest, source commit, Actions run,
-effective scan settings, and any publication exception. Release assets and
-attestation access should be retained for the supported release lifetime; the
-Actions artifact is additional finite-lived workflow evidence.
+effective scan settings, and any publication exception.
+
+## Retention and Incident Handling
+
+Treat every published GitHub Release and its provenance attestations as the
+canonical release record. Retain versioned release assets and attestations
+indefinitely while the repository exists; there is no routine expiry or
+cleanup. The Actions artifact bundle and reassessment report are supplementary
+evidence and follow the repository's configured Actions artifact retention
+period. Do not rely on those bundles as the only copy of release assets.
+Repository owners should preserve an offline copy of release assets, checksums,
+attestations, and reassessment reports before repository transfer or closure.
+
+When a reassessment or incident identifies a compromised or unsafe release:
+
+- record the affected version, archive digest, finding, and investigation
+  evidence in the incident record
+- stop downstream promotion and ask consumers to quarantine the affected
+  digest; notify known consumers with the affected version and replacement or
+  mitigation guidance
+- publish a replacement under a new version after it passes the normal release
+  gates; never replace or rebuild the bytes of the affected version
+- preserve the original release and evidence for investigation by default.
+  If access must be revoked or a release removed, obtain separate incident
+  authorization, preserve an offline evidence copy first, and document the
+  resulting loss of public availability
+
+Review the repository's artifact-retention setting periodically. Changing
+that setting affects supplementary Actions evidence, not the indefinite
+retention policy for published GitHub Releases.
 
 `ENABLE_GRYPE=true` requires `ENABLE_SBOM=true` because the vulnerability scan
 runs against the generated SBOM. `GRYPE_FAIL_ON` controls the severity threshold
@@ -120,12 +147,10 @@ exceptions block publication. Remove a release-specific exception after use.
 It downloads their retained SBOMs and uses the pinned Grype image with current
 vulnerability data. It does not rebuild or change published bytes. A release-list
 error, missing SBOM, scanner error, or critical finding fails the read-only workflow.
-Reports for scanned tags are retained in an Actions artifact. Triage findings
-against the retained archive digest, quarantine consumption in downstream
-systems, notify affected consumers, and publish a replacement version through
-the normal release gates.
-Do not overwrite an existing release. Remote revocation or deletion requires
-separate incident authorization.
+Reports for scanned tags are retained in an Actions artifact under the
+repository's configured artifact-retention period. Triage findings using the
+incident procedure above. The reassessment workflow is read-only; it does not
+change release assets or automatically quarantine, notify, or publish.
 
 ## Reproducibility Checks
 

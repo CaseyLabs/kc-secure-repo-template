@@ -104,6 +104,15 @@ setting. An unapplied plan supplies no protection. GitHub rulesets are available
 for public repositories on Free and for public/private repositories on Pro,
 Team, and Enterprise Cloud; verify the derived repository's plan and visibility.
 
+If CodeQL is enabled, add its actual per-language check names to
+`required_status_checks` after they have appeared on a pull request. The
+template cannot require CodeQL by default because derived repositories may
+not enable it or may analyze different languages. Review and remove any
+administrator bypass actor if the checks must apply to administrators too.
+Enable immutable releases in GitHub settings before the next publication;
+the setting protects published assets and their associated tags, while the
+tag ruleset protects `v*` refs before publication.
+
 ## Provider Lock Maintenance
 
 - Keep `config/infra/.terraform.lock.hcl` in version control and the template
