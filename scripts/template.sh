@@ -14,6 +14,7 @@ README.md
 .dockerignore
 .gitignore
 .agents
+.claude/settings.json
 .claude/skills
 .githooks
 .github

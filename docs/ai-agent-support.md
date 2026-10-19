@@ -11,6 +11,10 @@ maintenance, and repetitive repository tasks.
 - `.agents/skills/`: task-specific workflows for compatible agents.
 - `.claude/skills/`: Claude Code entrypoints that load the canonical workflows
   from `.agents/skills/` when selected.
+- `.claude/settings.json`: shared Claude Code deny rules for force-pushes and
+  skipped commit hooks.
+- `.githooks/commit-msg`: opt-in hook that rejects AI attribution in commit
+  messages.
 - `config/k8s/AGENTS.md` and `config/infra/AGENTS.md`: local rules for
   subtrees with extra hazards and verification needs.
 
@@ -57,6 +61,23 @@ The `.claude/skills/` entrypoints remain necessary for Claude skill discovery.
 
 Do not put secrets, credentials, private URLs, or unreviewed operational details
 in agent guidance.
+
+## Guardrails Outside The Model
+
+Rules that must always hold are enforced by tooling, not only written in
+`AGENTS.md`:
+
+- `.claude/settings.json` denies `git push --force`/`-f` and
+  `git commit --no-verify`/`-n` in any argument position. Codex relies on its
+  own sandbox and approval settings instead.
+- Deny rules match command text, so they are not a security boundary:
+  bundled flags (`git commit -an`) and global options (`git -C . push -f`)
+  are not matched. Branch protection and the `make scan` commit recheck are the
+  real controls; the deny rules only stop common agent mistakes early.
+- `.githooks/commit-msg` and `make scan` reject AI attribution in commits; see
+  the [commit rules](gitops-conventions.md#commits).
+- Keep personal permission changes in `.claude/settings.local.json`, which is
+  not shared or packaged.
 
 ## Skills
 
@@ -109,8 +130,9 @@ After changing guidance, start a fresh session in the repository:
 
 Claude entrypoints use regular files with relative links so Git checkouts and
 template archives do not require symlink support. The archive includes
-`.claude/skills/` and the canonical `.agents/` files; other `.claude/` settings
-are not part of the template manifest. `.claude/` is excluded from Docker build
+`.claude/skills/`, `.claude/settings.json`, and the canonical `.agents/` files;
+other `.claude/` files, such as personal `settings.local.json`, are not part of
+the template manifest. `.claude/` is excluded from Docker build
 context, like `.agents/`.
 
 See the official [Codex instruction discovery guide](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
