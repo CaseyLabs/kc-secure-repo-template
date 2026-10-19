@@ -12,6 +12,7 @@ LICENSE.md
 Makefile
 README.md
 .dockerignore
+.gitattributes
 .gitignore
 .agents
 .claude/settings.json
