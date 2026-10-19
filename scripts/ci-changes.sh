@@ -97,7 +97,7 @@ is_recognized_prose_path() {
 # are an explicit allowlist so a newly added script falls back to both jobs.
 is_repo_only_path() {
 	case "$1" in
-	scripts/clean.sh | scripts/dist.sh | scripts/example.sh | scripts/infra.sh | scripts/k8s-test-local.sh | scripts/k8s.sh | scripts/logs.sh | scripts/renovate.sh | scripts/run.sh | scripts/scan.sh | scripts/shell.sh | scripts/status.sh | scripts/stop.sh | scripts/template.sh | scripts/update.sh | scripts/workflow-policy.sh | scripts/ci-changes.sh)
+	scripts/clean.sh | scripts/dist.sh | scripts/example.sh | scripts/infra.sh | scripts/k8s-test-local.sh | scripts/k8s.sh | scripts/logs.sh | scripts/renovate.sh | scripts/run.sh | scripts/scan.sh | scripts/shell.sh | scripts/status.sh | scripts/stop.sh | scripts/template.sh | scripts/update.sh | scripts/workflow-policy.sh | scripts/commit-policy.sh | scripts/agent-policy.sh | scripts/ci-changes.sh)
 		return 0
 		;;
 	.github/* | .gitignore | .claude/* | .agents/* | config/*)

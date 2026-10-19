@@ -88,6 +88,8 @@ config/lockfile.cfg
 	assert_ci_change_detection 'k8s subtree CLAUDE.md' 'config/k8s/CLAUDE.md' false false
 	assert_ci_change_detection 'repo-only script k8s' 'scripts/k8s.sh' false true
 	assert_ci_change_detection 'repo-only script scan' 'scripts/scan.sh' false true
+	assert_ci_change_detection 'repo-only script commit policy' 'scripts/commit-policy.sh' false true
+	assert_ci_change_detection 'repo-only script agent policy' 'scripts/agent-policy.sh' false true
 	assert_ci_change_detection 'non-test workflow' '.github/workflows/scan.yml' false true
 	assert_ci_change_detection 'github config' '.github/renovate.json' false true
 	assert_ci_change_detection 'gitignore' '.gitignore' false true
