@@ -934,6 +934,11 @@ test_commit_policy_range() {
 		fi
 		grep -q "${bad}" ../range.txt || fail 'commit range policy should name the offending commit'
 
+		# An unresolvable head must fail instead of checking zero commits.
+		if COMMIT_POLICY_BASE=${base} COMMIT_POLICY_HEAD=deadbeefnotacommit check_commit_attribution_policy >/dev/null 2>&1; then
+			fail 'commit range policy should fail when the head cannot be resolved'
+		fi
+
 		# A range that starts after the bad commit passes.
 		COMMIT_POLICY_BASE=${bad} COMMIT_POLICY_HEAD=${head} check_commit_attribution_policy >/dev/null 2>&1 ||
 			fail 'commit range policy should accept a clean range'

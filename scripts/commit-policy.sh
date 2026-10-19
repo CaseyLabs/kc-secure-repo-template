@@ -72,9 +72,16 @@ check_commit_attribution_policy() {
 	# Word splitting is intended: the helper prints one rev-list argument per line.
 	# shellcheck disable=SC2046
 	set -- $(commit_policy_rev_list_args)
+	# Resolve the range before looping: a failing command substitution in a
+	# `for` list is ignored even under `set -e`, so an unknown head (a shallow
+	# clone or a bad CI event field) would otherwise check zero commits and pass.
+	if ! commit_policy_commits=$(git rev-list "$@"); then
+		printf 'commit policy: cannot list commits for %s\n' "$*" >&2
+		return 1
+	fi
 	commit_policy_message_file=$(mktemp)
 	commit_policy_status=0
-	for commit_policy_commit in $(git rev-list "$@"); do
+	for commit_policy_commit in ${commit_policy_commits}; do
 		git log -1 --format=%B "${commit_policy_commit}" >"${commit_policy_message_file}"
 		if ! check_commit_message_file "${commit_policy_message_file}" 2>"${commit_policy_message_file}.err"; then
 			printf 'commit %s:\n' "${commit_policy_commit}" >&2
