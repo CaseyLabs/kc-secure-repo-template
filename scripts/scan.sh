@@ -50,6 +50,20 @@ trap cleanup EXIT INT TERM HUP
 . ./scripts/commit-policy.sh
 . ./scripts/agent-policy.sh
 
+# Host-only checks run first: they need only sh, git, grep, sed, and awk, so a
+# PR that breaks them fails in seconds instead of after the image build and
+# container scans.
+printf '\n==> Check AI agent setup\n'
+# Keep skill entrypoints paired with canonical skills and the root guidance
+# within budget.
+check_agent_skill_policy
+check_agent_guidance_size
+
+printf '\n==> Check commit attribution policy\n'
+# Recheck commit messages in the pushed or PR range (COMMIT_POLICY_BASE/HEAD in
+# CI), because the local commit-msg hook is opt-in and can be skipped.
+check_commit_attribution_policy
+
 printf '\n==> Build project image\n'
 # GitHub Actions can opt into Buildx cache export/import without changing local defaults.
 if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
@@ -261,12 +275,8 @@ check_workflow_permissions_policy
 check_workflow_trigger_policy
 check_workflow_metadata_policy
 
-printf '\n==> Check AI agent setup\n'
-# Keep skill entrypoints paired with canonical skills, the root guidance within
-# budget, and the shared Claude deny rules in place.
-check_agent_skill_policy
-check_agent_guidance_size
-# The settings check parses JSON with jq, which the dev image provides; running
+printf '\n==> Check Claude settings\n'
+# Keep the shared Claude deny rules in place. The settings check parses JSON with jq, which the dev image provides; running
 # it in the container keeps jq off the list of required host tools.
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
@@ -277,8 +287,3 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-w /workspace \
 	"${project_image}" \
 	sh -eu -c '. ./scripts/agent-policy.sh; check_agent_settings_policy'
-
-printf '\n==> Check commit attribution policy\n'
-# Recheck commit messages in the pushed or PR range (COMMIT_POLICY_BASE/HEAD in
-# CI), because the local commit-msg hook is opt-in and can be skipped.
-check_commit_attribution_policy
