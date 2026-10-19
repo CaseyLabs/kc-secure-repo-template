@@ -85,7 +85,7 @@ Rules that must always hold are enforced by tooling, not only written in
     `name` and `description` and a relative link to the canonical file
   - canonical skills use only portable Agent Skills frontmatter keys (`name`,
     `description`, `license`, `compatibility`, `metadata`)
-  - `security-review` stays manual-only in both tools
+  - `repo-security-review` stays manual-only in both tools
   - root `AGENTS.md` stays within `AGENT_GUIDANCE_MAX_LINES` and
     `AGENT_GUIDANCE_MAX_BYTES` from `config/project.cfg`
   - `.claude/settings.json` keeps the shared deny rules
@@ -118,20 +118,22 @@ Treat agent guidance like code: small, reviewed, and backed by checks.
   `references/terraform.md`.
 - `workflow-validation`: checks shared across repository workflows.
 - `release-integrity`: artifact verification and release evidence.
-- `security-review`: explicitly invoked security analysis.
+- `repo-security-review`: explicitly invoked security analysis.
 - `pr-draft-summary`: PR handoff text grounded in the diff and completed checks.
 
 The references live inside their owning canonical skill directories and load
 only for relevant tasks. The former `language-profile-guidance` and
 `terraform-hardening` skill commands are replaced by `repo-adaptation` and
-`github-hardening`, respectively.
+`github-hardening`, respectively. The former `security-review` skill is now
+`repo-security-review` so it does not shadow Claude Code's built-in
+`/security-review` command.
 
 ## Common Uses
 
 - Codex CLI: use `/skills` to browse skills and `$skill-name` to select one.
 - Claude Code: use `/skills` to browse skills and `/skill-name` to select one.
-- Security review: explicitly invoke `$security-review` in Codex or
-  `/security-review` in Claude. Codex's `agents/openai.yaml` policy and Claude's
+- Security review: explicitly invoke `$repo-security-review` in Codex or
+  `/repo-security-review` in Claude. Codex's `agents/openai.yaml` policy and Claude's
   entrypoint `disable-model-invocation: true` prevent automatic invocation.
 - Change review: use Codex's `/review` to select a diff, or ask either tool to
   review a specified diff using `.agents/code_review.md` without editing files.
@@ -154,7 +156,7 @@ After changing guidance, start a fresh session in the repository:
   change, asking for text only. Confirm it reads the canonical workflow and
   reports only validation that actually ran.
 - Ask for a PR handoff without naming a skill to check automatic selection.
-  Confirm `security-review` is not selected for ordinary review requests; then
+  Confirm `repo-security-review` is not selected for ordinary review requests; then
   invoke it explicitly on a small named diff and confirm it proceeds.
 - If a skill is missing or behaves differently, check user/plugin skills with
   the same name and local settings before changing the shared instructions.

@@ -50,7 +50,7 @@ Typical routing:
 - Use `github-hardening` when updating GitHub-side hardening guidance, required repository settings, or the Terraform-backed implementation under `config/infra`.
 - Use `release-integrity` when working on SBOMs, attestations, artifact scanning, signing guidance, or release workflow safety.
 - Use `pr-draft-summary` when drafting a PR handoff after substantive repository changes.
-- Use `security-review` only when the user explicitly invokes `$security-review` (Codex) or `/security-review` (Claude Code); do not select it by semantic matching.
+- Use `repo-security-review` only when the user explicitly invokes `$repo-security-review` (Codex) or `/repo-security-review` (Claude Code); do not select it by semantic matching.
 
 If no matching skill exists, follow this file and the repository itself.
 

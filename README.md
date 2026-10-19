@@ -179,8 +179,8 @@ Example commands:
 # Perform a code review, based on the checklist in `.agents/code_review.md`:
 /review             
 
- # Perform a security audit of the repo, using `.agents/skills/security-review`:
-$security-review   
+ # Perform a security audit of the repo, using `.agents/skills/repo-security-review`:
+$repo-security-review   
 ```
 
 ---

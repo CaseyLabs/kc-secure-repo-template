@@ -1027,11 +1027,11 @@ test_agent_policy_rejects_violations() {
 		'sed -i "s#\.agents/skills/pr-draft-summary/SKILL\.md#.agents/skills/missing/SKILL.md#" .claude/skills/pr-draft-summary/SKILL.md' \
 		'pr-draft-summary: entrypoint must link'
 	assert_agent_policy_rejects 'an implicitly invocable Claude security review' \
-		'sed -i "/^disable-model-invocation:/d" .claude/skills/security-review/SKILL.md' \
-		'security-review: must stay manual-only'
+		'sed -i "/^disable-model-invocation:/d" .claude/skills/repo-security-review/SKILL.md' \
+		'repo-security-review: must stay manual-only'
 	assert_agent_policy_rejects 'an implicitly invocable Codex security review' \
-		'sed -i "s/allow_implicit_invocation: false/allow_implicit_invocation: true/" .agents/skills/security-review/agents/openai.yaml' \
-		'security-review: must stay manual-only'
+		'sed -i "s/allow_implicit_invocation: false/allow_implicit_invocation: true/" .agents/skills/repo-security-review/agents/openai.yaml' \
+		'repo-security-review: must stay manual-only'
 	assert_agent_policy_rejects 'oversized root guidance' \
 		'AGENT_GUIDANCE_MAX_LINES=10; export AGENT_GUIDANCE_MAX_LINES' \
 		'AGENTS.md has'

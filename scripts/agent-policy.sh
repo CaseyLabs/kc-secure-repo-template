@@ -116,12 +116,12 @@ check_agent_skill_policy() {
 		fi
 	done
 
-	# security-review is documented as explicit-invocation only in both tools.
+	# repo-security-review is documented as explicit-invocation only in both tools.
 	# Derived repositories may delete the skill, but not make it implicit.
-	if [ -d .agents/skills/security-review ]; then
-		if ! grep -Eq '^disable-model-invocation:[[:space:]]*true[[:space:]]*$' .claude/skills/security-review/SKILL.md 2>/dev/null ||
-			! grep -Eq '^[[:space:]]+allow_implicit_invocation:[[:space:]]*false[[:space:]]*$' .agents/skills/security-review/agents/openai.yaml 2>/dev/null; then
-			printf '%s\n' 'security-review: must stay manual-only (disable-model-invocation: true and allow_implicit_invocation: false)' >&2
+	if [ -d .agents/skills/repo-security-review ]; then
+		if ! grep -Eq '^disable-model-invocation:[[:space:]]*true[[:space:]]*$' .claude/skills/repo-security-review/SKILL.md 2>/dev/null ||
+			! grep -Eq '^[[:space:]]+allow_implicit_invocation:[[:space:]]*false[[:space:]]*$' .agents/skills/repo-security-review/agents/openai.yaml 2>/dev/null; then
+			printf '%s\n' 'repo-security-review: must stay manual-only (disable-model-invocation: true and allow_implicit_invocation: false)' >&2
 			agent_policy_status=1
 		fi
 	fi
