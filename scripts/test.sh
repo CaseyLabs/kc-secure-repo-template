@@ -965,6 +965,84 @@ test_commit_policy_range() {
 	rm -rf "${archive_dir}"
 }
 
+# Copy the real agent files into a disposable fixture so each case mutates one thing.
+agent_policy_fixture() {
+	fixture_dir=$(mktemp -d)
+	cp -R .agents .claude AGENTS.md "${fixture_dir}/"
+	printf '%s\n' "${fixture_dir}"
+}
+
+run_agent_policy_checks() {
+	check_agent_skill_policy && check_agent_guidance_size && check_agent_settings_policy
+}
+
+# Apply one mutation in a fresh fixture and require a specific rejection message.
+assert_agent_policy_rejects() {
+	name=$1
+	mutation=$2
+	expected_message=$3
+	fixture_dir=$(agent_policy_fixture)
+
+	(
+		cd "${fixture_dir}"
+		eval "${mutation}"
+		if run_agent_policy_checks >"${TMPDIR}/agent-policy.txt" 2>&1; then
+			fail "agent policy should reject ${name}"
+		fi
+		grep -q "${expected_message}" "${TMPDIR}/agent-policy.txt" ||
+			fail "agent policy should report '${expected_message}' for ${name}"
+	)
+	rm -rf "${fixture_dir}"
+}
+
+test_agent_policy_accepts_repository() {
+	fixture_dir=$(agent_policy_fixture)
+	(
+		cd "${fixture_dir}"
+		run_agent_policy_checks >"${TMPDIR}/agent-policy.txt" 2>&1 || {
+			cat "${TMPDIR}/agent-policy.txt" >&2
+			fail 'agent policy should accept the shipped agent files'
+		}
+	)
+	rm -rf "${fixture_dir}"
+}
+
+test_agent_policy_rejects_violations() {
+	assert_agent_policy_rejects 'a missing entrypoint' \
+		'rm -r .claude/skills/pr-draft-summary' \
+		'pr-draft-summary: missing Claude entrypoint'
+	assert_agent_policy_rejects 'an orphan entrypoint' \
+		'mkdir .claude/skills/orphan && cp .claude/skills/pr-draft-summary/SKILL.md .claude/skills/orphan/' \
+		'orphan: Claude entrypoint has no canonical skill'
+	assert_agent_policy_rejects 'description drift' \
+		'sed -i "s/^description: .*/description: Drifted./" .claude/skills/pr-draft-summary/SKILL.md' \
+		'pr-draft-summary: entrypoint description differs'
+	assert_agent_policy_rejects 'a name mismatch' \
+		'sed -i "s/^name: .*/name: other/" .agents/skills/pr-draft-summary/SKILL.md' \
+		'pr-draft-summary: frontmatter name'
+	assert_agent_policy_rejects 'a host-only key in a canonical skill' \
+		'sed -i "2a model: sonnet" .agents/skills/pr-draft-summary/SKILL.md' \
+		'pr-draft-summary: non-portable frontmatter key model'
+	assert_agent_policy_rejects 'a broken canonical link' \
+		'sed -i "s#\.agents/skills/pr-draft-summary/SKILL\.md#.agents/skills/missing/SKILL.md#" .claude/skills/pr-draft-summary/SKILL.md' \
+		'pr-draft-summary: entrypoint must link'
+	assert_agent_policy_rejects 'an implicitly invocable Claude security review' \
+		'sed -i "/^disable-model-invocation:/d" .claude/skills/security-review/SKILL.md' \
+		'security-review: must stay manual-only'
+	assert_agent_policy_rejects 'an implicitly invocable Codex security review' \
+		'sed -i "s/allow_implicit_invocation: false/allow_implicit_invocation: true/" .agents/skills/security-review/agents/openai.yaml' \
+		'security-review: must stay manual-only'
+	assert_agent_policy_rejects 'oversized root guidance' \
+		'AGENT_GUIDANCE_MAX_LINES=10; export AGENT_GUIDANCE_MAX_LINES' \
+		'AGENTS.md has'
+	assert_agent_policy_rejects 'a missing deny rule' \
+		'sed -i "/git commit \* -n\*/d" .claude/settings.json' \
+		'missing deny rule Bash(git commit \* -n\*)'
+	assert_agent_policy_rejects 'missing Claude settings' \
+		'rm .claude/settings.json' \
+		'.claude/settings.json is missing'
+}
+
 test_infra_preserves_lock_and_forwards_token() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -1080,6 +1158,7 @@ template | smoke | _regression)
 	if [ "${mode}" = _regression ]; then
 		. ./scripts/workflow-policy.sh
 		. ./scripts/commit-policy.sh
+		. ./scripts/agent-policy.sh
 		. ./config/lockfile.cfg
 		test_workflow_pull_request_target_is_rejected
 		test_workflow_issue_comment_is_rejected
@@ -1092,6 +1171,8 @@ template | smoke | _regression)
 		test_template_skip_src_tests_flag
 		test_commit_policy_message_rules
 		test_commit_policy_range
+		test_agent_policy_accepts_repository
+		test_agent_policy_rejects_violations
 		test_local_state_is_not_packaged
 		test_infra_preserves_lock_and_forwards_token
 		sh scripts/test-release.sh

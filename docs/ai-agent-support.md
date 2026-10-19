@@ -42,7 +42,8 @@ For a derived repository:
 - keep Claude entrypoint names and descriptions aligned with the canonical
   skills; edit workflow instructions only in `.agents/skills/`
 - remove skills that do not apply to the derived project
-  and their corresponding `.claude/skills/` entrypoints
+  and their corresponding `.claude/skills/` entrypoints; `make scan` fails
+  when one side is left behind
 - add subtree `AGENTS.md` files only where a directory has real local hazards or
   verification needs
 
@@ -78,6 +79,16 @@ Rules that must always hold are enforced by tooling, not only written in
   the [commit rules](gitops-conventions.md#commits).
 - Keep personal permission changes in `.claude/settings.local.json`, which is
   not shared or packaged.
+- `make scan` checks the agent setup (`scripts/agent-policy.sh`):
+  - every `.agents/skills/<name>/SKILL.md` has a matching
+    `.claude/skills/<name>/SKILL.md` entrypoint and vice versa, with the same
+    `name` and `description` and a relative link to the canonical file
+  - canonical skills use only portable Agent Skills frontmatter keys (`name`,
+    `description`, `license`, `compatibility`, `metadata`)
+  - `security-review` stays manual-only in both tools
+  - root `AGENTS.md` stays within `AGENT_GUIDANCE_MAX_LINES` and
+    `AGENT_GUIDANCE_MAX_BYTES` from `config/project.cfg`
+  - `.claude/settings.json` keeps the shared deny rules
 
 ## Skills
 

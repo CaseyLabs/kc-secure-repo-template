@@ -48,6 +48,7 @@ trap cleanup EXIT INT TERM HUP
 
 . ./scripts/workflow-policy.sh
 . ./scripts/commit-policy.sh
+. ./scripts/agent-policy.sh
 
 printf '\n==> Build project image\n'
 # GitHub Actions can opt into Buildx cache export/import without changing local defaults.
@@ -259,6 +260,13 @@ check_workflow_action_pins
 check_workflow_permissions_policy
 check_workflow_trigger_policy
 check_workflow_metadata_policy
+
+printf '\n==> Check AI agent setup\n'
+# Keep skill entrypoints paired with canonical skills, the root guidance within
+# budget, and the shared Claude deny rules in place.
+check_agent_skill_policy
+check_agent_guidance_size
+check_agent_settings_policy
 
 printf '\n==> Check commit attribution policy\n'
 # Recheck commit messages in the pushed or PR range (COMMIT_POLICY_BASE/HEAD in
