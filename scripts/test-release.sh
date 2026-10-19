@@ -91,6 +91,9 @@ chmod +x "${test_dir}/packaging-bin/docker"
 
 # A fake make records the bounded sequence without requiring a second Docker
 # build in this focused test. Production template mode tests real Docker.
+# `make test TEST_MODE=...` exports TEST_MODE to this script; clear it so the
+# log records only what validate-release-archive.sh itself sets per command.
+unset TEST_MODE
 mkdir -p "${test_dir}/source/scripts" "${test_dir}/source/config" "${test_dir}/source/src" "${test_dir}/bin"
 touch "${test_dir}/source/Makefile" "${test_dir}/source/Dockerfile" \
 	"${test_dir}/source/config/project.cfg" "${test_dir}/source/scripts/build.sh" \
