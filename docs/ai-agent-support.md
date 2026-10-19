@@ -88,7 +88,7 @@ Rules that must always hold are enforced by tooling, not only written in
   - `repo-security-review` stays manual-only in both tools
   - root `AGENTS.md` stays within `AGENT_GUIDANCE_MAX_LINES` and
     `AGENT_GUIDANCE_MAX_BYTES` from `config/project.cfg`
-  - `.claude/settings.json` keeps the shared deny rules
+  - `.claude/settings.json` keeps the shared deny rules in `permissions.deny`
 
 ## Maintaining Agent Guidance
 

@@ -147,23 +147,28 @@ check_agent_guidance_size() {
 	fi
 }
 
-# Require the shared Claude Code deny rules. A plain text match keeps this
-# check free of host tools beyond grep; the file is reviewed JSON.
+# Require the shared Claude Code deny rules inside `permissions.deny`. A plain
+# text match would also accept a rule moved to `allow` or `ask`, so the JSON is
+# parsed with jq. jq ships in the dev image; make scan runs this check there.
 check_agent_settings_policy() {
 	if [ ! -f .claude/settings.json ]; then
 		printf '%s\n' '.claude/settings.json is missing; restore the shared deny rules (see docs/ai-agent-support.md)' >&2
 		return 1
 	fi
+	# Invalid JSON, or a deny value that is not a list, fails here.
+	if ! agent_deny_rules=$(jq -r '(.permissions.deny // []) as $deny | if ($deny | type) == "array" then $deny[] else error("not a list") end' .claude/settings.json); then
+		printf '%s\n' '.claude/settings.json: cannot read permissions.deny as a list of rules' >&2
+		return 1
+	fi
 
 	agent_policy_status=0
-	agent_rules_file=$(mktemp)
-	printf '%s\n' "${AGENT_REQUIRED_DENY_RULES}" >"${agent_rules_file}"
 	while IFS= read -r agent_rule; do
-		if ! grep -Fq "\"${agent_rule}\"" .claude/settings.json; then
+		if ! printf '%s\n' "${agent_deny_rules}" | grep -Fxq -e "${agent_rule}"; then
 			printf '.claude/settings.json: missing deny rule %s\n' "${agent_rule}" >&2
 			agent_policy_status=1
 		fi
-	done <"${agent_rules_file}"
-	rm -f "${agent_rules_file}"
+	done <<EOF
+${AGENT_REQUIRED_DENY_RULES}
+EOF
 	return "${agent_policy_status}"
 }

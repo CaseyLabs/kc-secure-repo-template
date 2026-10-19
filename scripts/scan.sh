@@ -266,7 +266,17 @@ printf '\n==> Check AI agent setup\n'
 # budget, and the shared Claude deny rules in place.
 check_agent_skill_policy
 check_agent_guidance_size
-check_agent_settings_policy
+# The settings check parses JSON with jq, which the dev image provides; running
+# it in the container keeps jq off the list of required host tools.
+docker run --rm --user "${docker_uid}:${docker_gid}" \
+	--cap-drop=ALL \
+	--security-opt=no-new-privileges:true \
+	--network=none \
+	-e HOME="${docker_home}" \
+	-v "$(pwd):/workspace:ro" \
+	-w /workspace \
+	"${project_image}" \
+	sh -eu -c '. ./scripts/agent-policy.sh; check_agent_settings_policy'
 
 printf '\n==> Check commit attribution policy\n'
 # Recheck commit messages in the pushed or PR range (COMMIT_POLICY_BASE/HEAD in
