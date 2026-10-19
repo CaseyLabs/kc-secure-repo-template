@@ -5,16 +5,13 @@
 # root guidance short. These checks enforce that outside the model, so drift is
 # caught in review instead of surfacing as a skill that silently stops loading.
 
-# Shared Claude Code deny rules that derived repositories should keep. Each rule
-# matches the flag in any argument position (see docs/ai-agent-support.md).
+# Shared Claude Code deny rules that derived repositories should keep. The
+# flags are matched immediately after the subcommand to avoid matching text in
+# later arguments (see docs/ai-agent-support.md).
 AGENT_REQUIRED_DENY_RULES='Bash(git push --force*)
-Bash(git push * --force*)
 Bash(git push -f*)
-Bash(git push * -f*)
 Bash(git commit --no-verify*)
-Bash(git commit * --no-verify*)
-Bash(git commit -n*)
-Bash(git commit * -n*)'
+Bash(git commit -n*)'
 
 # Frontmatter keys from the Agent Skills specification. Canonical skills under
 # .agents/skills/ are shared by Codex and Claude Code, so they use only these;
@@ -170,5 +167,15 @@ check_agent_settings_policy() {
 	done <<EOF
 ${AGENT_REQUIRED_DENY_RULES}
 EOF
+	# These older wildcard forms also match phrases inside later arguments,
+	# including commit messages. Reject them so derived repos don't reintroduce
+	# the false positives described in docs/ai-agent-support.md.
+	for agent_rule in 'Bash(git push * --force*)' 'Bash(git push * -f*)' \
+		'Bash(git commit * --no-verify*)' 'Bash(git commit * -n*)'; do
+		if printf '%s\n' "${agent_deny_rules}" | grep -Fxq -e "${agent_rule}"; then
+			printf '.claude/settings.json: overly broad deny rule %s\n' "${agent_rule}" >&2
+			agent_policy_status=1
+		fi
+	done
 	return "${agent_policy_status}"
 }

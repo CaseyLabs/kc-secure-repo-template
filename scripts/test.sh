@@ -1068,11 +1068,14 @@ test_agent_policy_rejects_violations() {
 		'AGENT_GUIDANCE_MAX_LINES=10; export AGENT_GUIDANCE_MAX_LINES' \
 		'AGENTS.md has'
 	assert_agent_policy_rejects 'a missing deny rule' \
-		'jq ".permissions.deny -= [\"Bash(git commit * -n*)\"]" .claude/settings.json >settings.tmp && mv settings.tmp .claude/settings.json' \
-		'missing deny rule Bash(git commit \* -n\*)'
+		'jq ".permissions.deny -= [\"Bash(git commit -n*)\"]" .claude/settings.json >settings.tmp && mv settings.tmp .claude/settings.json' \
+		'missing deny rule Bash(git commit -n\*)'
 	assert_agent_policy_rejects 'a deny rule moved to allow' \
 		'jq ".permissions.deny -= [\"Bash(git commit --no-verify*)\"] | .permissions.allow = [\"Bash(git commit --no-verify*)\"]" .claude/settings.json >settings.tmp && mv settings.tmp .claude/settings.json' \
 		'missing deny rule Bash(git commit --no-verify\*)'
+	assert_agent_policy_rejects 'an overly broad deny rule' \
+		'jq ".permissions.deny += [\"Bash(git commit * -n*)\"]" .claude/settings.json >settings.tmp && mv settings.tmp .claude/settings.json' \
+		'overly broad deny rule Bash(git commit \* -n\*)'
 	assert_agent_policy_rejects 'unreadable Claude settings' \
 		'printf "{\\n" >.claude/settings.json' \
 		'cannot read permissions.deny'

@@ -69,12 +69,14 @@ Rules that must always hold are enforced by tooling, not only written in
 `AGENTS.md`:
 
 - `.claude/settings.json` denies `git push --force`/`-f` and
-  `git commit --no-verify`/`-n` in any argument position. Codex relies on its
-  own sandbox and approval settings instead.
-- Deny rules match command text, so they are not a security boundary:
-  bundled flags (`git commit -an`) and global options (`git -C . push -f`)
-  are not matched. Branch protection and the `make scan` commit recheck are the
-  real controls; the deny rules only stop common agent mistakes early.
+  `git commit --no-verify`/`-n` when the flag immediately follows its
+  subcommand. Later arguments are not scanned for those strings, which avoids
+  blocking ordinary commands such as a commit message that mentions `-n`.
+- Claude Code deny rules match command text, so they are not a security
+  boundary: flags later in the command, bundled flags (`git commit -an`), and
+  global options (`git -C . push -f`) are not matched. Branch protection and
+  the `make scan` commit recheck are the real controls; these rules stop common
+  agent mistakes early. Codex relies on its own sandbox and approval settings.
 - `.githooks/commit-msg` and `make scan` reject AI attribution in commits; see
   the [commit rules](gitops-conventions.md#commits).
 - Keep personal permission changes in `.claude/settings.local.json`, which is
