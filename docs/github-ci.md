@@ -69,6 +69,10 @@ container-first, pinned, scanned, and reviewable.
   - `actionlint` checks syntax and expression mistakes.
   - `zizmor` checks GitHub Actions security footguns.
   - repo policy checks enforce template-specific hard fails.
+- Commit history stays human-attributed:
+  - `make scan` rejects AI attribution in the pushed or pull request commit
+    range; the scan workflow passes the range through `env`, not `run`.
+  - see the commit rules in [GitOps Naming Conventions](gitops-conventions.md#commits).
 - Workflow dependencies stay pinned:
   - external Actions use full commit SHAs.
   - `make scan` enforces those pins.

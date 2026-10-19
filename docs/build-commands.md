@@ -21,7 +21,8 @@ call instead of adding many new root targets.
 
 ## Specialized Commands
 
-- `make scan`: runs template security scans and workflow policy checks.
+- `make scan`: runs template security scans, workflow policy checks, AI agent
+  setup checks, and the commit attribution check.
 - `make update`: resolves reviewed image selectors into digest locks and syncs
   related generated references.
 - `make renovate`: runs self-hosted Renovate when enabled.

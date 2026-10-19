@@ -1,10 +1,10 @@
 ---
-name: security-review
+name: repo-security-review
 description: |
   Manual-only skill.
 
   Use ONLY when the user explicitly invokes:
-  $security-review (Codex) or /security-review (Claude Code)
+  $repo-security-review (Codex) or /repo-security-review (Claude Code)
 
   Never select this skill via semantic matching.
 ---
@@ -13,8 +13,8 @@ description: |
 
 ## Activation guard
 
-If the user has not explicitly invoked this skill as `$security-review`
-(Codex) or `/security-review` (Claude Code):
+If the user has not explicitly invoked this skill as `$repo-security-review`
+(Codex) or `/repo-security-review` (Claude Code):
 - Exit immediately
 - Do not analyze anything
 - Do not load references
@@ -124,7 +124,7 @@ If no strong match → use none
 
 ## Hard rules
 
-- Only run after explicit `$security-review` or `/security-review` invocation
+- Only run after explicit `$repo-security-review` or `/repo-security-review` invocation
 - Never trigger implicitly
 - Never scan entire repo unless explicitly asked
 - Never load more than one reference for the task

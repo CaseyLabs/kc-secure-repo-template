@@ -1,0 +1,15 @@
+# Normalize text files to LF in the repository and in every checkout.
+# Shell scripts, the commit-msg hook, Makefile recipes, and Dockerfile heredocs
+# break when a Windows checkout converts them to CRLF, and the Docker-first
+# workflows read these files from bind mounts as-is.
+* text=auto eol=lf
+
+# Never normalize binary assets that derived projects commonly add.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.gz binary
+*.zip binary

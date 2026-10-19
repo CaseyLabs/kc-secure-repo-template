@@ -1,0 +1,11 @@
+#!/bin/sh
+# Reject AI attribution in commit messages before the commit is created.
+# Local hooks are opt-in; enable this directory once per clone with:
+#   git config core.hooksPath .githooks
+# CI reruns the same check over pushed and pull request commits (make scan),
+# so skipping this hook with --no-verify does not bypass the policy.
+set -eu
+
+# Git runs hooks from the top of the working tree, so the relative path is stable.
+. ./scripts/commit-policy.sh
+check_commit_message_file "$1"
