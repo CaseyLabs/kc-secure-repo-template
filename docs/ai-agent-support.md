@@ -90,6 +90,26 @@ Rules that must always hold are enforced by tooling, not only written in
     `AGENT_GUIDANCE_MAX_BYTES` from `config/project.cfg`
   - `.claude/settings.json` keeps the shared deny rules
 
+## Maintaining Agent Guidance
+
+Treat agent guidance like code: small, reviewed, and backed by checks.
+
+- Add a rule only after an agent got something wrong without it, and phrase it
+  as a check the agent can act on.
+- Delete rules that agents already follow unprompted or that restate what the
+  `Makefile`, scripts, or docs already make obvious.
+- Put rules that must never break into a hook, deny rule, or `make scan` check,
+  not into more emphatic wording.
+- Keep one source per fact: durable rules in `AGENTS.md`, review criteria in
+  `.agents/code_review.md`, procedures in the owning skill or doc, linked with
+  a one-line trigger.
+- When an agent repeats a mistake despite a rule, the rule is probably unclear
+  or buried; rewrite or shorten it instead of adding another.
+- Keep canonical skill frontmatter portable and put host-only keys in the
+  `.claude/skills/` entrypoints or `agents/openai.yaml`.
+- When Codex or Claude Code changes how it loads instructions or skills,
+  update this page and the version notes above together.
+
 ## Skills
 
 - `repo-adaptation`: project customization, with optional language guidance in

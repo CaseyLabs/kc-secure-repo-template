@@ -82,6 +82,7 @@ If no matching skill exists, follow this file and the repository itself.
 - Do not add broad error handling that hides failures.
 - Prefer explicit error propagation or clear surfaced failures over silent fallbacks.
 - When behavior changes, update or add the relevant tests.
+- Turn each confirmed bug into a regression test. Never loosen an assertion, workflow-policy exception, or allowlist just to make a check pass.
 - Keep secrets, tokens, and credentials out of code, logs, fixtures, examples, and documentation.
 - Never add AI attribution (co-author trailers, generated-by lines) to commits or PRs, and never bypass hooks with `--no-verify`; `make scan` rechecks commit messages.
 
@@ -105,6 +106,8 @@ Minimum expectations:
 - For code, test, Docker, script, packaging, CI, security, or release changes, run the relevant existing `make` targets and any directly affected checks.
 - Do not claim success without verification.
 - If a needed check cannot be run, state that clearly and explain why.
+- Report passed, failed, skipped, and unrun checks separately; if a named skill or tool was unavailable, say so instead of implying it ran.
+- Only one agent at a time runs `make build`, `make test`, or `make scan` in a checkout: they share the image tag and the `.cache/` Docker home. Read-only work and static checks may run in parallel.
 
 ## Review
 
