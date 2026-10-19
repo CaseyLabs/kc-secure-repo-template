@@ -210,9 +210,10 @@ Rules:
 - Keep the subject under about 72 characters when practical.
 - Use the body for rationale, tradeoffs, and reviewer context.
 - Mention issue or PR numbers when they help future archaeology.
-- Do not add AI tool attribution: no AI `Co-authored-by:` trailers, "Generated
-  with <tool>" lines, or agent session trailers and links. Commit authorship
-  stays with the humans who review and commit the change.
+- Do not add AI tool attribution: no AI `Co-authored-by:`, `Co-developed-by:`,
+  `Assisted-by:`, or `Generated-by:` trailers, "Generated with <tool>" lines,
+  or agent session trailers and links. Commit authorship stays with the humans
+  who review and commit the change.
   - `.githooks/commit-msg` rejects these lines locally; enable it once per
     clone with `git config core.hooksPath .githooks`.
   - `make scan` rechecks every commit in the pushed or pull request range,
