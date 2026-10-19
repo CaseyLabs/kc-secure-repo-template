@@ -957,6 +957,16 @@ test_commit_policy_range() {
 		if (unset COMMIT_POLICY_BASE COMMIT_POLICY_HEAD; check_commit_attribution_policy >/dev/null 2>&1); then
 			fail 'local commit policy should check commits since origin/main'
 		fi
+
+		# Recorded messages are checked verbatim: a stored scissors line must not
+		# hide a trailer after it (the hook-only cleanup does not apply here).
+		git commit -q --allow-empty --cleanup=verbatim -m '[feat] src: three
+# ------------------------ >8 ------------------------
+Co-authored-by: Claude <noreply@anthropic.com>'
+		scissors=$(git rev-parse HEAD)
+		if COMMIT_POLICY_BASE=${head} COMMIT_POLICY_HEAD=${scissors} check_commit_attribution_policy >/dev/null 2>&1; then
+			fail 'commit range policy should check recorded messages verbatim'
+		fi
 	); then
 		rm -rf "${history_dir}"
 		return 1
