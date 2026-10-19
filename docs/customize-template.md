@@ -23,6 +23,8 @@ between local and GitHub Actions behavior.
 
 1. Start from the template and run `make example`.
 2. Set `PROJECT_NAME` and `PROJECT_IMAGE` in `config/project.cfg`.
+   Enable the shared Git hooks once per clone with
+   `git config core.hooksPath .githooks`.
 3. Replace the contents of `src/` with your project source.
 4. Identify how the project builds, tests, runs, and releases before changing
    root workflow files.

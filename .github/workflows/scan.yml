@@ -42,4 +42,9 @@ jobs:
         env:
           # scripts/scan.sh reads this variable and passes it to docker buildx.
           DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=project-image --cache-to type=gha,scope=project-image,mode=max
+          # The commit attribution check rechecks this range (PR commits, or the
+          # commits a push added). Commit SHAs go through env, never directly into
+          # `run`; an unknown base makes the check cover the head's full history.
+          COMMIT_POLICY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          COMMIT_POLICY_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: PROJECT_CFG_FILE=config/project.cfg make scan

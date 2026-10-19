@@ -860,6 +860,111 @@ EOF
 	rm -rf "${workdir}"
 }
 
+# Run the attribution check on one message and report whether it was rejected.
+assert_commit_message_policy() {
+	name=$1
+	expected=$2
+	message=$3
+	message_file=${TMPDIR}/commit-policy-message.txt
+
+	printf '%s\n' "${message}" >"${message_file}"
+	if check_commit_message_file "${message_file}" >"${TMPDIR}/commit-policy-output.txt" 2>&1; then
+		actual=accept
+	else
+		actual=reject
+	fi
+	[ "${actual}" = "${expected}" ] || fail "commit policy ${name}: expected ${expected}, got ${actual}"
+}
+
+test_commit_policy_message_rules() {
+	assert_commit_message_policy 'plain message' accept '[fix] docker: update snapshot
+
+Mention claude in prose without attribution.'
+	assert_commit_message_policy 'human co-author' accept '[feat] src: add flag
+
+Co-authored-by: Pat Example <pat@example.invalid>'
+	assert_commit_message_policy 'claude co-author' reject '[feat] src: add flag
+
+Co-authored-by: Claude <noreply@anthropic.com>'
+	assert_commit_message_policy 'codex co-author' reject '[feat] src: add flag
+
+co-authored-by: Codex <codex@openai.com>'
+	assert_commit_message_policy 'generated-with line' reject '[feat] src: add flag
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+	assert_commit_message_policy 'session trailer' reject '[feat] src: add flag
+
+Claude-Session: abc123'
+	assert_commit_message_policy 'session url' reject '[feat] src: add flag
+
+See https://claude.ai/code/session_0123'
+	assert_commit_message_policy 'comment line' accept '[feat] src: add flag
+# Co-authored-by: Claude <noreply@anthropic.com>'
+	assert_commit_message_policy 'below scissors' accept '[feat] src: add flag
+# ------------------------ >8 ------------------------
++Co-authored-by: Claude <noreply@anthropic.com>'
+	grep -q 'AI attribution' "${TMPDIR}/commit-policy-output.txt" && fail 'accepted message should not print a rejection'
+	assert_commit_message_policy 'rejection output' reject 'x
+
+Co-authored-by: Claude <noreply@anthropic.com>'
+	grep -q 'Co-authored-by: Claude' "${TMPDIR}/commit-policy-output.txt" || fail 'commit policy should print the offending line'
+}
+
+test_commit_policy_range() {
+	history_dir=$(mktemp -d)
+
+	if ! (
+		cd "${history_dir}"
+		mkdir home
+		export HOME="${history_dir}/home"
+		git init -q -b main source
+		cd source
+		git config user.name 'Commit Policy Test'
+		git config user.email 'commit-policy@example.invalid'
+		git commit -q --allow-empty -m 'initial'
+		base=$(git rev-parse HEAD)
+		git commit -q --allow-empty -m '[feat] src: one' -m 'Co-authored-by: Claude <noreply@anthropic.com>'
+		bad=$(git rev-parse HEAD)
+		git commit -q --allow-empty -m '[feat] src: two'
+		head=$(git rev-parse HEAD)
+
+		# A bad commit in the middle of the pushed range must fail the check.
+		if COMMIT_POLICY_BASE=${base} COMMIT_POLICY_HEAD=${head} check_commit_attribution_policy >../range.txt 2>&1; then
+			fail 'commit range policy should reject a bad commit inside the range'
+		fi
+		grep -q "${bad}" ../range.txt || fail 'commit range policy should name the offending commit'
+
+		# A range that starts after the bad commit passes.
+		COMMIT_POLICY_BASE=${bad} COMMIT_POLICY_HEAD=${head} check_commit_attribution_policy >/dev/null 2>&1 ||
+			fail 'commit range policy should accept a clean range'
+
+		# An unknown base (new branch push, rewritten history) checks all of history.
+		if COMMIT_POLICY_BASE=0000000000000000000000000000000000000000 COMMIT_POLICY_HEAD=${head} check_commit_attribution_policy >/dev/null 2>&1; then
+			fail 'commit range policy should check full history when the base is unknown'
+		fi
+
+		# Without CI variables or a remote, only HEAD is checked.
+		(unset COMMIT_POLICY_BASE COMMIT_POLICY_HEAD; check_commit_attribution_policy >/dev/null 2>&1) ||
+			fail 'local commit policy without a remote should check HEAD only'
+
+		# Without CI variables, a remote default branch bounds the local range.
+		git update-ref refs/remotes/origin/main "${base}"
+		if (unset COMMIT_POLICY_BASE COMMIT_POLICY_HEAD; check_commit_attribution_policy >/dev/null 2>&1); then
+			fail 'local commit policy should check commits since origin/main'
+		fi
+	); then
+		rm -rf "${history_dir}"
+		return 1
+	fi
+	rm -rf "${history_dir}"
+
+	# Archives have no Git metadata; the check skips instead of failing.
+	archive_dir=$(mktemp -d)
+	(cd "${archive_dir}" && GIT_CEILING_DIRECTORIES=${archive_dir%/*} check_commit_attribution_policy >/dev/null 2>&1) ||
+		fail 'commit policy should skip outside a Git checkout'
+	rm -rf "${archive_dir}"
+}
+
 test_infra_preserves_lock_and_forwards_token() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -974,6 +1079,7 @@ template | smoke | _regression)
 	export TMPDIR="${suite_dir}/tmp"
 	if [ "${mode}" = _regression ]; then
 		. ./scripts/workflow-policy.sh
+		. ./scripts/commit-policy.sh
 		. ./config/lockfile.cfg
 		test_workflow_pull_request_target_is_rejected
 		test_workflow_issue_comment_is_rejected
@@ -984,6 +1090,8 @@ template | smoke | _regression)
 		test_ci_change_detection_output_contract
 		test_ci_change_detection_git_history
 		test_template_skip_src_tests_flag
+		test_commit_policy_message_rules
+		test_commit_policy_range
 		test_local_state_is_not_packaged
 		test_infra_preserves_lock_and_forwards_token
 		sh scripts/test-release.sh

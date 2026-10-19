@@ -15,6 +15,7 @@ README.md
 .gitignore
 .agents
 .claude/skills
+.githooks
 .github
 docs
 config

@@ -83,6 +83,7 @@ If no matching skill exists, follow this file and the repository itself.
 - Prefer explicit error propagation or clear surfaced failures over silent fallbacks.
 - When behavior changes, update or add the relevant tests.
 - Keep secrets, tokens, and credentials out of code, logs, fixtures, examples, and documentation.
+- Never add AI attribution (co-author trailers, generated-by lines) to commits or PRs, and never bypass hooks with `--no-verify`; `make scan` rechecks commit messages.
 
 ## Security and reproducibility
 
