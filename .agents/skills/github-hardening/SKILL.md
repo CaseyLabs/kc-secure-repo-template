@@ -49,7 +49,7 @@ Select the topics relevant to the requested scope:
 - secret scanning
 - push protection
 - dependency graph
-- Dependabot alerts and security updates
+- Dependabot alerts (Renovate opens vulnerability-fix PRs; Dependabot security updates default to off)
 - code scanning when supported
 
 ## Output expectations

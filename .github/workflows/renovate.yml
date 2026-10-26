@@ -1,11 +1,13 @@
 # Run self-hosted Renovate so dependency PRs can refresh generated lock values.
 name: renovate.yml
 
-# This workflow can be run manually and also runs on a monthly schedule.
+# This workflow can be run manually and also runs daily.
+# - Daily runs let vulnerability-fix PRs open within a day; routine updates
+#   still wait for the monthly `schedule` in `.github/renovate.json`.
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 9 1 * *"
+    - cron: "17 9 * * *"
 
 # The default token only needs read access because Renovate uses a GitHub App
 # token with narrower, explicit permissions for repository changes.
@@ -36,6 +38,12 @@ jobs:
           permission-statuses: write
           permission-contents: write
           permission-pull-requests: write
+          # Renovate now owns GitHub Actions updates, and GitHub only lets an
+          # app edit `.github/workflows/*` with this permission.
+          permission-workflows: write
+          # Read Dependabot alerts so Renovate can open vulnerability-fix PRs
+          # that skip the schedule and cooldown.
+          permission-vulnerability-alerts: read
           permission-administration: read
           permission-metadata: read
       # make renovate keeps Renovate execution inside the repository's normal

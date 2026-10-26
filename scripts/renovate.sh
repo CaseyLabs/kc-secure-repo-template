@@ -38,7 +38,9 @@ renovate_repository=${RENOVATE_REPOSITORY:-${RENOVATE_REPOSITORIES:-${GITHUB_REP
 }
 
 renovate_image=${DEV_RENOVATE_IMAGE_LOCK:-${DEV_RENOVATE_IMAGE:-renovate/renovate:43.113.0}}
-renovate_allowed_commands='["^sh scripts/update.sh config/project.cfg$"]'
+# Renovate may only run the exact lock refresh command from .github/renovate.json.
+# The snapshot flag keeps Debian packages current when image locks are refreshed.
+renovate_allowed_commands='["^sh scripts/update.sh config/project.cfg --refresh-package-snapshot$"]'
 
 printf '\n==> Run self-hosted Renovate\n'
 printf '%s\n' "Image: ${renovate_image}"

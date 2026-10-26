@@ -479,6 +479,24 @@ test_local_state_is_not_packaged() {
 	rm -f config/infra/terraform.tfvars src/app
 }
 
+# Rewrite image selectors to their committed digest locks so update.sh can
+# resolve every image offline (digest-pinned selectors skip registry lookups).
+pin_selectors_to_locks() {
+	sed \
+		-e "s#^DEV_BASE_IMAGE=.*#DEV_BASE_IMAGE='${DEV_BASE_IMAGE_LOCK}'#" \
+		-e "s#^DEV_GO_IMAGE=.*#DEV_GO_IMAGE='${DEV_GO_IMAGE_LOCK}'#" \
+		-e "s#^DEV_TERRAFORM_IMAGE=.*#DEV_TERRAFORM_IMAGE='${DEV_TERRAFORM_IMAGE_LOCK}'#" \
+		-e "s#^DEV_K8S_HELM_IMAGE=.*#DEV_K8S_HELM_IMAGE='${DEV_K8S_HELM_IMAGE_LOCK}'#" \
+		-e "s#^DEV_K8S_KUBECTL_IMAGE=.*#DEV_K8S_KUBECTL_IMAGE='${DEV_K8S_KUBECTL_IMAGE_LOCK}'#" \
+		-e "s#^DEV_SCAN_BETTERLEAKS_IMAGE=.*#DEV_SCAN_BETTERLEAKS_IMAGE='${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}'#" \
+		-e "s#^DEV_SCAN_ACTIONLINT_IMAGE=.*#DEV_SCAN_ACTIONLINT_IMAGE='${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}'#" \
+		-e "s#^DEV_SCAN_ZIZMOR_IMAGE=.*#DEV_SCAN_ZIZMOR_IMAGE='${DEV_SCAN_ZIZMOR_IMAGE_LOCK}'#" \
+		-e "s#^DEV_SCAN_TRIVY_IMAGE=.*#DEV_SCAN_TRIVY_IMAGE='${DEV_SCAN_TRIVY_IMAGE_LOCK}'#" \
+		-e "s#^DEV_SCAN_SYFT_IMAGE=.*#DEV_SCAN_SYFT_IMAGE='${DEV_SCAN_SYFT_IMAGE_LOCK}'#" \
+		-e "s#^DEV_SCAN_GRYPE_IMAGE=.*#DEV_SCAN_GRYPE_IMAGE='${DEV_SCAN_GRYPE_IMAGE_LOCK}'#" \
+		-e "s#^DEV_RENOVATE_IMAGE=.*#DEV_RENOVATE_IMAGE='${DEV_RENOVATE_IMAGE_LOCK}'#"
+}
+
 test_optional_k8s_update_compat() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -506,20 +524,52 @@ EOF
 			-e "/^K8S_VALUES_FILE=/d" \
 			-e "/^K8S_IMAGE_REPOSITORY=/d" \
 			-e "/^K8S_IMAGE_TAG=/d" \
-			-e "s#^DEV_BASE_IMAGE=.*#DEV_BASE_IMAGE='${DEV_BASE_IMAGE_LOCK}'#" \
-			-e "s#^DEV_GO_IMAGE=.*#DEV_GO_IMAGE='${DEV_GO_IMAGE_LOCK}'#" \
-			-e "s#^DEV_TERRAFORM_IMAGE=.*#DEV_TERRAFORM_IMAGE='${DEV_TERRAFORM_IMAGE_LOCK}'#" \
-			-e "s#^DEV_SCAN_BETTERLEAKS_IMAGE=.*#DEV_SCAN_BETTERLEAKS_IMAGE='${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}'#" \
-			-e "s#^DEV_SCAN_ACTIONLINT_IMAGE=.*#DEV_SCAN_ACTIONLINT_IMAGE='${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}'#" \
-			-e "s#^DEV_SCAN_ZIZMOR_IMAGE=.*#DEV_SCAN_ZIZMOR_IMAGE='${DEV_SCAN_ZIZMOR_IMAGE_LOCK}'#" \
-			-e "s#^DEV_SCAN_TRIVY_IMAGE=.*#DEV_SCAN_TRIVY_IMAGE='${DEV_SCAN_TRIVY_IMAGE_LOCK}'#" \
-			-e "s#^DEV_SCAN_SYFT_IMAGE=.*#DEV_SCAN_SYFT_IMAGE='${DEV_SCAN_SYFT_IMAGE_LOCK}'#" \
-			-e "s#^DEV_SCAN_GRYPE_IMAGE=.*#DEV_SCAN_GRYPE_IMAGE='${DEV_SCAN_GRYPE_IMAGE_LOCK}'#" \
-			-e "s#^DEV_RENOVATE_IMAGE=.*#DEV_RENOVATE_IMAGE='${DEV_RENOVATE_IMAGE_LOCK}'#" \
-			config/project.cfg >config/project.cfg.test
+			config/project.cfg | pin_selectors_to_locks >config/project.cfg.test
 		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test >${TMPDIR}/template-update-optional-k8s.txt
 		grep -q "^DEV_K8S_HELM_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S Helm lock when the optional setting is absent'
 		grep -q "^DEV_K8S_KUBECTL_IMAGE_LOCK=''\$" config/lockfile.cfg || fail 'update should keep an empty K8S kubectl lock when the optional setting is absent'
+	)
+	rm -rf "${workdir}"
+}
+
+test_update_package_snapshot_refresh() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	# Offline fixture: curl must not run, and date returns a fixed UTC day so
+	# the refreshed Debian snapshot value is deterministic.
+	mkdir -p "${workdir}/bin"
+	cat >"${workdir}/bin/curl" <<'EOF'
+#!/bin/sh
+printf 'curl should not be called in package snapshot refresh test\n' >&2
+exit 1
+EOF
+	cat >"${workdir}/bin/date" <<'EOF'
+#!/bin/sh
+[ "$*" = '-u +%Y%m%dT000000Z' ] || { printf 'unexpected date arguments: %s\n' "$*" >&2; exit 1; }
+printf '%s\n' '20991231T000000Z'
+EOF
+	chmod +x "${workdir}/bin/curl" "${workdir}/bin/date"
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		pin_selectors_to_locks <config/project.cfg >config/project.cfg.test
+		previous_snapshot=$(sed -n "s/^DEV_PACKAGE_SNAPSHOT_LOCK='\(.*\)'\$/\1/p" config/lockfile.cfg)
+
+		# Plain make update keeps the reviewed snapshot unchanged.
+		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test >/dev/null
+		grep -qx "DEV_PACKAGE_SNAPSHOT_LOCK='${previous_snapshot}'" config/lockfile.cfg || fail 'update should keep the Debian package snapshot without the refresh flag'
+
+		# The opt-in flag moves the snapshot to the current UTC day.
+		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test --refresh-package-snapshot >/dev/null
+		grep -qx "DEV_PACKAGE_SNAPSHOT_LOCK='20991231T000000Z'" config/lockfile.cfg || fail 'update --refresh-package-snapshot should lock the current UTC day'
+
+		# Unknown options fail loudly instead of being ignored.
+		! PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test --refresh >/dev/null 2>&1 || fail 'update should reject unknown options'
 	)
 	rm -rf "${workdir}"
 }
@@ -1397,6 +1447,7 @@ template | smoke | _regression)
 		test_infra_preserves_lock_and_forwards_token
 		sh scripts/test-release.sh
 		test_optional_k8s_update_compat
+		test_update_package_snapshot_refresh
 		test_optional_k8s_scan_skip
 		test_scan_scanner_arguments
 		test_dist_scanner_arguments

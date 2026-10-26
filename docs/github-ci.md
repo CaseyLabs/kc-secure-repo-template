@@ -5,7 +5,6 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
 ```
 .
 └── .github/
-    ├── dependabot.yml
     ├── renovate
     │   └── setup-github-app.sh
     ├── renovate.json
@@ -24,11 +23,11 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
   - security scans
   - release publishing
   - scheduled/manual maintenance
-- `dependabot.yml`
-  - GitHub Actions updates
 - `renovate.json`
   - self-hosted Renovate settings
-  - updates for tool and image values in `config/project.cfg`
+  - updates for tool and image values in `config/project.cfg`, image digests,
+    GitHub Actions pins, Terraform provider locks, and Go modules
+  - see [Dependency Updates](dependency-updates.md)
 - `renovate/setup-github-app.sh`
   - helper for creating the Renovate GitHub App
   - uses narrow app credentials instead of a broad personal token
@@ -79,7 +78,7 @@ container-first, pinned, scanned, and reviewable.
 - Workflow dependencies stay pinned:
   - external Actions use full commit SHAs.
   - `make scan` enforces those pins.
-  - Dependabot delays routine action updates before opening PRs.
+  - Renovate delays routine action updates before opening PRs.
 - Release artifacts stay traceable:
   - release tags must point at default-branch history.
   - existing releases are not clobbered.
@@ -244,8 +243,7 @@ automation.
 - Repository controls:
   - enable secret scanning
   - enable push protection
-  - enable Dependabot alerts
-  - enable Dependabot security updates
+  - enable Dependabot alerts (Renovate opens the fix PRs)
 - Workflow controls:
   - require approval for sensitive workflow runs
   - restrict environments that expose secrets

@@ -189,9 +189,7 @@ $repo-security-review
 
 This template also uses third-party tools to automate the upgrade of project images/tools/dependencies via Pull Requests:
 
-- [dependabot](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/dependabot-quickstart-guide): will update GitHub Actions pins in workflows
-  - `.github/dependabot.yml`
-- [renovate](https://github.com/renovatebot/renovate): will update any tools listed in `config/project.cfg`
+- [renovate](https://github.com/renovatebot/renovate): will update tools and images listed in `config/project.cfg`, image digests, GitHub Actions pins, Terraform provider locks, and Go modules
   - `.github/renovate.json`
   - `.github/workflows/renovate.yml`
   *Note*: Renovate requires a GitHub App to be installed in order to operate. To create one, run:

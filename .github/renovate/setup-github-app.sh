@@ -159,6 +159,8 @@ manifest = {
         "statuses": "write",
         "contents": "write",
         "pull_requests": "write",
+        "workflows": "write",
+        "vulnerability_alerts": "read",
         "administration": "read",
         "metadata": "read"
     },
