@@ -104,6 +104,7 @@ Minimum expectations:
 
 - For documentation-only changes, verify that examples, commands, paths, and references still match the repository.
 - For code, test, Docker, script, packaging, CI, security, or release changes, run the relevant existing `make` targets and any directly affected checks.
+- Plain `make test` only covers `src/`; changes to `scripts/`, workflows, or packaging also need `TEST_MODE=template make test`.
 - Do not claim success without verification.
 - If a needed check cannot be run, state that clearly and explain why.
 - Report passed, failed, skipped, and unrun checks separately; if a named skill or tool was unavailable, say so instead of implying it ran.

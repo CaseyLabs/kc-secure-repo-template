@@ -1,0 +1,9 @@
+# Reviewed Trivy misconfiguration suppressions. make scan passes this file to
+# every Trivy run with --ignorefile. Give each entry a reason, and remove an
+# entry as soon as its reason no longer holds.
+
+# GIT-0001 (Repository is public): config/infra manages this template's own
+# GitHub repository, which is public on purpose so others can use it as a
+# template. A derived private repository should set repository_visibility to
+# "private" (config/infra/variables.tf or terraform.tfvars) and delete this entry.
+GIT-0001

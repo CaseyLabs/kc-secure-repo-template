@@ -247,32 +247,123 @@ test_ci_change_detection_git_history() {
 	rm -rf "${history_dir}"
 }
 
-test_workflow_pull_request_target_is_rejected() {
-	workdir=$(mktemp -d)
-	root_dir=$(pwd)
+# Write one workflow fixture from stdin into an empty directory and require the
+# real pinned zizmor image to fail it with the named audit. Uses Docker, so it
+# runs in template mode on the host, not inside the network-less regression
+# container.
+assert_zizmor_rejects() {
+	fixture_dir=$(mktemp -d)
+	mkdir -p "${fixture_dir}/.github/workflows"
+	cat >"${fixture_dir}/.github/workflows/unsafe.yml"
+	if run_workflow_security_scan "${DEV_SCAN_ZIZMOR_IMAGE_LOCK}" "${fixture_dir}" >${TMPDIR}/template-zizmor.txt 2>&1; then
+		fail "zizmor should reject $1"
+	fi
+	grep -q "$2" ${TMPDIR}/template-zizmor.txt || fail "zizmor should report $2 for $1"
+	rm -rf "${fixture_dir}"
+}
 
-	(
-		cd "${workdir}"
-		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
-		tar -C "${root_dir}" -cf fixture.tar -T files.txt
-		tar -xf fixture.tar
-		rm fixture.tar files.txt
-		cat >.github/workflows/unsafe.yml <<'EOF'
+# These cases were previously enforced by awk checks in scripts/workflow-policy.sh;
+# zizmor now owns them, so keep regression coverage against the real scanner.
+test_zizmor_rejects_unsafe_workflows() {
+	# Control: a minimal safe workflow passes, so the failures below come from
+	# the unsafe construct rather than from the fixture setup.
+	fixture_dir=$(mktemp -d)
+	mkdir -p "${fixture_dir}/.github/workflows"
+	cat >"${fixture_dir}/.github/workflows/safe.yml" <<'EOF'
+name: safe
+on:
+  pull_request:
+permissions: {}
+jobs:
+  safe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo safe
+EOF
+	run_workflow_security_scan "${DEV_SCAN_ZIZMOR_IMAGE_LOCK}" "${fixture_dir}" >${TMPDIR}/template-zizmor-safe.txt 2>&1 || fail 'zizmor should accept the safe control workflow'
+	rm -rf "${fixture_dir}"
+
+	assert_zizmor_rejects 'tag-pinned actions' 'unpinned-uses' <<'EOF'
+name: unsafe
+on:
+  pull_request:
+permissions: {}
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+EOF
+	assert_zizmor_rejects 'short-SHA action pins' 'unpinned-uses' <<'EOF'
+name: unsafe
+on:
+  pull_request:
+permissions: {}
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e # v7.0.1
+        with:
+          persist-credentials: false
+EOF
+	assert_zizmor_rejects 'pull_request_target' 'dangerous-triggers' <<'EOF'
 name: unsafe
 on:
   pull_request_target:
+permissions: {}
 jobs:
   unsafe:
     runs-on: ubuntu-24.04
     steps:
       - run: echo unsafe
 EOF
-		if check_workflow_trigger_policy >${TMPDIR}/template-workflow-trigger-policy.txt 2>&1; then
-			fail 'workflow trigger policy should reject pull_request_target'
-		fi
-		grep -q 'pull_request_target is not allowed' ${TMPDIR}/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report pull_request_target'
-	)
-	rm -rf "${workdir}"
+	assert_zizmor_rejects 'workflow_run' 'dangerous-triggers' <<'EOF'
+name: unsafe
+on:
+  workflow_run:
+    workflows:
+      - test.yml
+    types:
+      - completed
+permissions:
+  contents: write
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
+	assert_zizmor_rejects 'untrusted metadata in run steps' 'template-injection' <<'EOF'
+name: unsafe
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo "${{ github.event.pull_request.title }}"
+          echo "${{ github.head_ref }}"
+EOF
+	# zizmor only reports missing permissions per job, so a workflow with
+	# job-level permissions but no top-level block passes it. The stricter
+	# top-level rule stays in check_workflow_permissions_policy; this case
+	# pins zizmor's overlapping coverage.
+	assert_zizmor_rejects 'missing permissions' 'excessive-permissions' <<'EOF'
+name: unsafe
+on:
+  pull_request:
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
 }
 
 test_workflow_issue_comment_is_rejected() {
@@ -307,36 +398,31 @@ EOF
 	rm -rf "${workdir}"
 }
 
-test_workflow_run_is_rejected_without_policy_exception() {
+# zizmor honors inline "# zizmor: ignore[...]" comments and has no flag to turn
+# them off, so the workflow policy rejects them to keep its audits unbypassable.
+# The check only reads workflow and action files, so a minimal fixture is enough.
+test_workflow_zizmor_ignore_is_rejected() {
 	workdir=$(mktemp -d)
-	root_dir=$(pwd)
 
 	(
 		cd "${workdir}"
-		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
-		tar -C "${root_dir}" -cf fixture.tar -T files.txt
-		tar -xf fixture.tar
-		rm fixture.tar files.txt
+		mkdir -p .github/workflows
 		cat >.github/workflows/unsafe.yml <<'EOF'
 name: unsafe
 on:
-  workflow_run:
-    workflows:
-      - test.yml
-    types:
-      - completed
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
 permissions:
-  contents: write
+  contents: read
 jobs:
   unsafe:
     runs-on: ubuntu-24.04
     steps:
       - run: echo unsafe
 EOF
-		if check_workflow_trigger_policy >${TMPDIR}/template-workflow-trigger-policy.txt 2>&1; then
-			fail 'workflow trigger policy should reject workflow_run'
+		if check_workflow_scanner_suppressions >${TMPDIR}/template-workflow-suppressions.txt 2>&1; then
+			fail 'workflow policy should reject inline zizmor ignores'
 		fi
-		grep -q 'workflow_run requires a dedicated reviewed policy exception' ${TMPDIR}/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report workflow_run'
+		grep -q 'inline zizmor ignore is not allowed' ${TMPDIR}/template-workflow-suppressions.txt || fail 'workflow policy should report inline zizmor ignores'
 	)
 	rm -rf "${workdir}"
 }
@@ -365,37 +451,6 @@ EOF
 			fail 'workflow permissions policy should reject missing permissions'
 		fi
 		grep -q 'missing top-level permissions block' ${TMPDIR}/template-workflow-permissions-policy.txt || fail 'workflow permissions policy should report missing permissions'
-	)
-	rm -rf "${workdir}"
-}
-
-test_workflow_metadata_interpolation_is_rejected() {
-	workdir=$(mktemp -d)
-	root_dir=$(pwd)
-
-	(
-		cd "${workdir}"
-		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
-		tar -C "${root_dir}" -cf fixture.tar -T files.txt
-		tar -xf fixture.tar
-		rm fixture.tar files.txt
-		cat >.github/workflows/unsafe.yml <<'EOF'
-name: unsafe
-on:
-  pull_request:
-permissions:
-  contents: read
-jobs:
-  unsafe:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: |
-          echo "${{ github.event.pull_request.title }}"
-EOF
-		if check_workflow_metadata_policy >${TMPDIR}/template-workflow-metadata-policy.txt 2>&1; then
-			fail 'workflow metadata policy should reject unsafe run interpolation'
-		fi
-		grep -q 'untrusted github.event metadata must not be interpolated directly into run steps' ${TMPDIR}/template-workflow-metadata-policy.txt || fail 'workflow metadata policy should report unsafe metadata interpolation'
 	)
 	rm -rf "${workdir}"
 }
@@ -454,7 +509,7 @@ EOF
 			-e "s#^DEV_BASE_IMAGE=.*#DEV_BASE_IMAGE='${DEV_BASE_IMAGE_LOCK}'#" \
 			-e "s#^DEV_GO_IMAGE=.*#DEV_GO_IMAGE='${DEV_GO_IMAGE_LOCK}'#" \
 			-e "s#^DEV_TERRAFORM_IMAGE=.*#DEV_TERRAFORM_IMAGE='${DEV_TERRAFORM_IMAGE_LOCK}'#" \
-			-e "s#^DEV_SCAN_GITLEAKS_IMAGE=.*#DEV_SCAN_GITLEAKS_IMAGE='${DEV_SCAN_GITLEAKS_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_BETTERLEAKS_IMAGE=.*#DEV_SCAN_BETTERLEAKS_IMAGE='${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_ACTIONLINT_IMAGE=.*#DEV_SCAN_ACTIONLINT_IMAGE='${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_ZIZMOR_IMAGE=.*#DEV_SCAN_ZIZMOR_IMAGE='${DEV_SCAN_ZIZMOR_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_TRIVY_IMAGE=.*#DEV_SCAN_TRIVY_IMAGE='${DEV_SCAN_TRIVY_IMAGE_LOCK}'#" \
@@ -499,6 +554,132 @@ EOF
 		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-optional-k8s.txt
 		grep -q 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan' ${TMPDIR}/template-scan-optional-k8s.txt || fail 'scan should report when it skips the optional Kubernetes scaffold'
 		grep -q 'No rendered Kubernetes manifests available; skipping Trivy config scan' ${TMPDIR}/template-scan-optional-k8s.txt || fail 'scan should skip the Kubernetes Trivy pass when nothing was rendered'
+	)
+	rm -rf "${workdir}"
+}
+
+# Record every scanner container invocation so the argument contract (pinned
+# image, read-only mounts, no network where the scanner needs none) is checked
+# without pulling real images.
+test_scan_scanner_arguments() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		rm -rf config/k8s
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		sed -e "/^DEV_K8S_HELM_IMAGE=/d" config/project.cfg >config/project.cfg.test
+		. ./config/lockfile.cfg
+
+		# Without Git metadata the secret scan falls back to a plain directory scan.
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args.txt
+		secret_line=$(grep -F -- "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}" docker.log) || fail 'scan should run the digest-pinned betterleaks image'
+		printf '%s\n' "${secret_line}" | grep -Eq "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK} dir /repo( |$)" || fail 'scan should use betterleaks dir without Git metadata'
+		printf '%s\n' "${secret_line}" | grep -Fq -- '--network=none' || fail 'secret scan should run without network access'
+		printf '%s\n' "${secret_line}" | grep -Fq -- ':/repo:ro' || fail 'secret scan should mount the repository read-only'
+		printf '%s\n' "${secret_line}" | grep -Fq -- '--validation' && fail 'secret scan must not validate findings against live APIs'
+
+		# Trivy runs offline from its bundled checks, cannot write to the checkout,
+		# and covers the Terraform under config/infra as well as Dockerfiles.
+		trivy_line=$(grep -F -- "${DEV_SCAN_TRIVY_IMAGE_LOCK} fs " docker.log) || fail 'scan should run the digest-pinned Trivy filesystem scan'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--network=none' || fail 'Trivy should run without network access'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-check-update' || fail 'Trivy should use its bundled checks instead of downloading them'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- ':/workspace:ro' || fail 'Trivy should mount the repository read-only'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--misconfig-scanners dockerfile,terraform' || fail 'Trivy should scan Dockerfiles and Terraform'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-dirs /workspace/config/infra/.terraform' || fail 'Trivy should skip downloaded Terraform providers and modules'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--ignorefile /workspace/config/.trivyignore' || fail 'Trivy should read the reviewed ignore file'
+		# Gitignored caches and scratch copies are not repository content.
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-dirs /workspace/.cache' || fail 'Trivy should skip the local Docker cache'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-dirs /workspace/.tmp' || fail 'Trivy should skip local scratch files'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--tf-exclude-downloaded-modules' || fail 'Trivy should exclude downloaded Terraform modules'
+
+		# A checked-in .github/zizmor.yml must not be able to disable the audits
+		# that replaced the old awk workflow checks.
+		zizmor_line=$(grep -F -- "${DEV_SCAN_ZIZMOR_IMAGE_LOCK}" docker.log) || fail 'scan should run the digest-pinned zizmor image'
+		printf '%s\n' "${zizmor_line}" | grep -Fq -- '--no-config' || fail 'zizmor should ignore repository config files'
+
+		# actionlint keeps its bundled shellcheck enabled for workflow run: blocks.
+		actionlint_line=$(grep -F -- "${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}" docker.log) || fail 'scan should run the digest-pinned actionlint image'
+		printf '%s\n' "${actionlint_line}" | grep -Fq -- '-shellcheck=' && fail 'actionlint should keep shellcheck enabled'
+		printf '%s\n' "${actionlint_line}" | grep -Fq -- '--network=none' || fail 'actionlint should run without network access'
+		printf '%s\n' "${actionlint_line}" | grep -Fq -- ':/workspace:ro' || fail 'actionlint should mount the repository read-only'
+
+		# With Git metadata the scan covers history through the git subcommand.
+		git init -q .
+		git -c user.name=fixture -c user.email=fixture@example.invalid commit -q --allow-empty -m "[test] fixture: init"
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args-git.txt
+		grep -F -- "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}" docker.log | grep -Eq "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK} git /repo( |$)" || fail 'scan should use betterleaks git when Git metadata exists'
+
+		# Derived repositories that still only set the legacy gitleaks lock keep a
+		# working secret scan instead of failing on an unset variable.
+		legacy_image='ghcr.io/example/legacy-secret-scanner@sha256:0000000000000000000000000000000000000000000000000000000000000000'
+		sed -e '/^DEV_SCAN_BETTERLEAKS_IMAGE_LOCK=/d' config/lockfile.cfg >config/lockfile.cfg.new
+		printf "DEV_SCAN_GITLEAKS_IMAGE_LOCK='%s'\n" "${legacy_image}" >>config/lockfile.cfg.new
+		mv config/lockfile.cfg.new config/lockfile.cfg
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args-legacy.txt
+		grep -Fq -- "${legacy_image} git /repo" docker.log || fail 'scan should fall back to the legacy DEV_SCAN_GITLEAKS_IMAGE_LOCK'
+
+		# An unpinned legacy lock is reported under the variable that is set.
+		sed -e "s#^DEV_SCAN_GITLEAKS_IMAGE_LOCK=.*#DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/example/legacy-secret-scanner:v1'#" config/lockfile.cfg >config/lockfile.cfg.new
+		mv config/lockfile.cfg.new config/lockfile.cfg
+		if PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args-legacy-unpinned.txt 2>&1; then
+			fail 'scan should reject an unpinned legacy secret scanner lock'
+		fi
+		grep -Fq 'DEV_SCAN_GITLEAKS_IMAGE_LOCK must be pinned by digest' ${TMPDIR}/template-scan-args-legacy-unpinned.txt || fail 'unpinned legacy lock error should name DEV_SCAN_GITLEAKS_IMAGE_LOCK'
+	)
+	rm -rf "${workdir}"
+}
+
+test_dist_scanner_arguments() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		mkdir -p fake-bin
+		# The fake docker logs each call and stands in for the release command by
+		# writing the archive and manifest that the real container would create.
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+case "$*" in
+*'scripts/template.sh release'*)
+	mkdir -p dist
+	: >dist/kc-secure-repo-template.tar.gz
+	: >dist/template-manifest.txt
+	;;
+esac
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		. ./config/lockfile.cfg
+
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/dist.sh config/project.cfg >${TMPDIR}/template-dist-args.txt
+		# The release command writes dist/, so only it keeps a writable checkout.
+		grep -F -- 'scripts/template.sh release' docker.log | grep -Fq -- ':/workspace ' || fail 'release command should mount the repository read-write'
+		# syft and grype only read the archive and SBOM, so they cannot modify the
+		# checkout or the evidence they are reporting on.
+		syft_line=$(grep -F -- "${DEV_SCAN_SYFT_IMAGE_LOCK}" docker.log) || fail 'dist should run the digest-pinned syft image'
+		printf '%s\n' "${syft_line}" | grep -Fq -- ':/workspace:ro' || fail 'syft should mount the repository read-only'
+		grype_line=$(grep -F -- "${DEV_SCAN_GRYPE_IMAGE_LOCK}" docker.log) || fail 'dist should run the digest-pinned grype image'
+		printf '%s\n' "${grype_line}" | grep -Fq -- ':/workspace:ro' || fail 'grype should mount the repository read-only'
 	)
 	rm -rf "${workdir}"
 }
@@ -1201,11 +1382,9 @@ template | smoke | _regression)
 		. ./scripts/commit-policy.sh
 		. ./scripts/agent-policy.sh
 		. ./config/lockfile.cfg
-		test_workflow_pull_request_target_is_rejected
 		test_workflow_issue_comment_is_rejected
-		test_workflow_run_is_rejected_without_policy_exception
 		test_workflow_missing_permissions_is_rejected
-		test_workflow_metadata_interpolation_is_rejected
+		test_workflow_zizmor_ignore_is_rejected
 		test_ci_change_detection_rules
 		test_ci_change_detection_output_contract
 		test_ci_change_detection_git_history
@@ -1219,6 +1398,8 @@ template | smoke | _regression)
 		sh scripts/test-release.sh
 		test_optional_k8s_update_compat
 		test_optional_k8s_scan_skip
+		test_scan_scanner_arguments
+		test_dist_scanner_arguments
 		test_k8s_shell_inputs_are_not_executed
 		test_k8s_render_file_scan_path
 		test_k8s_test_local_uses_kubeconfig_and_server_dry_run
@@ -1241,6 +1422,8 @@ template | smoke | _regression)
 		--cap-drop=ALL --security-opt=no-new-privileges:true \
 		-v "$(pwd):/workspace:ro" -w /workspace \
 		"${regression_image}" sh scripts/test.sh _regression
+	. ./scripts/workflow-policy.sh
+	test_zizmor_rejects_unsafe_workflows
 	GITHUB_TOKEN= make infra APPLY=false INFRA_UPDATE_LOCK=false
 	PROJECT_CFG_FILE=config/project.cfg make k8s >${TMPDIR}/template-k8s.txt
 	[ -f .tmp/k8s/rendered/kc-secure-template.yaml ] || fail 'make k8s should write a rendered Kubernetes manifest'

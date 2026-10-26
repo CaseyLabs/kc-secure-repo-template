@@ -134,56 +134,63 @@ else
 fi
 
 # Secret scanning is security-sensitive, so require a digest-pinned scanner image.
-secret_scan_image=${DEV_SCAN_GITLEAKS_IMAGE_LOCK}
+# Derived repositories that have not renamed their lock yet keep scanning with
+# DEV_SCAN_GITLEAKS_IMAGE_LOCK; gitleaks v8.19+ accepts the same git/dir commands.
+# The lock name is kept with the image so a pin error names the variable the
+# user actually set.
+if [ -n "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK:-}" ] || [ -z "${DEV_SCAN_GITLEAKS_IMAGE_LOCK:-}" ]; then
+	secret_scan_lock_name=DEV_SCAN_BETTERLEAKS_IMAGE_LOCK
+	secret_scan_image=${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK:-}
+else
+	secret_scan_lock_name=DEV_SCAN_GITLEAKS_IMAGE_LOCK
+	secret_scan_image=${DEV_SCAN_GITLEAKS_IMAGE_LOCK}
+fi
 case "${secret_scan_image}" in
 *@sha256:*) ;;
 *)
-	printf 'DEV_SCAN_GITLEAKS_IMAGE_LOCK must be pinned by digest\n' >&2
+	printf '%s must be pinned by digest\n' "${secret_scan_lock_name}" >&2
 	exit 1
 	;;
 esac
 
 printf '\n==> Run secret scan\n'
-# Prefer Git-aware scanning so removed-but-still-reachable secrets in history are caught.
-if [ -d .git ]; then
-	docker run --rm --user "${docker_uid}:${docker_gid}" \
-		--cap-drop=ALL \
-		--security-opt=no-new-privileges:true \
-		-e HOME="${docker_home}" \
-		-e XDG_CACHE_HOME="${docker_cache_home}" \
-		-v "${docker_home_source}:${docker_home}" \
-		-v "${docker_tmpdir}:/tmp" \
-		-v "$(pwd):/repo" \
-		-w /repo \
-		"${secret_scan_image}" \
-		detect --source /repo --no-banner --redact --exit-code 1
-else
-	# Fall back to plain filesystem scanning when Git metadata is unavailable.
-	docker run --rm --user "${docker_uid}:${docker_gid}" \
-		--cap-drop=ALL \
-		--security-opt=no-new-privileges:true \
-		-e HOME="${docker_home}" \
-		-e XDG_CACHE_HOME="${docker_cache_home}" \
-		-v "${docker_home_source}:${docker_home}" \
-		-v "${docker_tmpdir}:/tmp" \
-		-v "$(pwd):/repo" \
-		"${secret_scan_image}" \
-		detect --source /repo --no-git --no-banner --redact --exit-code 1
-fi
-
-printf '\n==> Run workflow lint\n'
-# Use actionlint in a container so CI and local runs use the same tool version.
+# Prefer Git-aware scanning so removed-but-still-reachable secrets in history are
+# caught; fall back to a plain directory scan when Git metadata is unavailable.
+secret_scan_mode=dir
+[ -d .git ] && secret_scan_mode=git
+# The scanner only reads the checkout and never validates findings against live
+# APIs (no --validation), so it runs with no network and a read-only mount: a
+# compromised scanner image can neither exfiltrate nor rewrite repository files.
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
+	--network=none \
 	-e HOME="${docker_home}" \
 	-e XDG_CACHE_HOME="${docker_cache_home}" \
 	-v "${docker_home_source}:${docker_home}" \
 	-v "${docker_tmpdir}:/tmp" \
-	-v "$(pwd):/workspace" \
+	-v "$(pwd):/repo:ro" \
+	-w /repo \
+	"${secret_scan_image}" \
+	"${secret_scan_mode}" /repo --no-banner --redact --exit-code 1
+
+printf '\n==> Run workflow lint\n'
+# Use actionlint in a container so CI and local runs use the same tool version.
+# The image bundles shellcheck, which actionlint runs on every run: block, so
+# shell quoting and word-splitting bugs in workflows fail the scan. pyflakes is
+# disabled because the workflows contain no Python steps. actionlint only reads
+# the checkout, so it gets no network and a read-only mount.
+docker run --rm --user "${docker_uid}:${docker_gid}" \
+	--cap-drop=ALL \
+	--security-opt=no-new-privileges:true \
+	--network=none \
+	-e HOME="${docker_home}" \
+	-e XDG_CACHE_HOME="${docker_cache_home}" \
+	-v "${docker_home_source}:${docker_home}" \
+	-v "${docker_tmpdir}:/tmp" \
+	-v "$(pwd):/workspace:ro" \
 	-w /workspace \
 	"${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}" \
-	-shellcheck= \
 	-pyflakes= \
 	.github/workflows/*.yml
 
@@ -198,22 +205,9 @@ esac
 
 printf '\n==> Run GitHub Actions security scan\n'
 # zizmor complements actionlint by checking workflow security footguns without
-# executing workflow code. Offline mode keeps local and CI scans deterministic.
-docker run --rm --user "${docker_uid}:${docker_gid}" \
-	--cap-drop=ALL \
-	--security-opt=no-new-privileges:true \
-	-e HOME="${docker_home}" \
-	-e XDG_CACHE_HOME="${docker_cache_home}" \
-	-v "${docker_home_source}:${docker_home}" \
-	-v "${docker_tmpdir}:/tmp" \
-	-v "$(pwd):/workspace" \
-	-w /workspace \
-	"${zizmor_scan_image}" \
-	--offline \
-	--strict-collection \
-	--collect=workflows,actions \
-	--persona=regular \
-	.
+# executing workflow code. The shared helper in scripts/workflow-policy.sh keeps
+# the flags identical between this scan and the regression fixtures.
+run_workflow_security_scan "${zizmor_scan_image}" "$(pwd)"
 
 trivy_scan_image=${DEV_SCAN_TRIVY_IMAGE_LOCK}
 case "${trivy_scan_image}" in
@@ -225,24 +219,42 @@ case "${trivy_scan_image}" in
 esac
 
 printf '\n==> Run misconfiguration scan\n'
-# Trivy complements the other scanners by checking Dockerfile posture issues.
+# Trivy complements the other scanners by checking Dockerfile and Terraform
+# posture issues. It runs offline from the checks bundled in the pinned image
+# (--skip-check-update), so a compromised or changed check feed cannot alter
+# results, and it mounts the checkout read-only because it only reads it.
+# On a cold cache (such as a fresh CI runner) Trivy logs "Falling back to
+# embedded checks" at ERROR level; that is expected and the scan still runs.
+# config/.trivyignore holds reviewed suppressions, each with its reason.
+# --skip-dirs drops providers and modules that terraform init downloads, which
+# are third-party code rather than this repository's configuration, plus the
+# gitignored .cache and .tmp trees so local runs match a fresh CI checkout.
+# --tf-exclude-downloaded-modules also covers modules the evaluator loads
+# through .terraform/modules/modules.json, including other Terraform roots.
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
+	--network=none \
 	-e HOME="${docker_home}" \
 	-e XDG_CACHE_HOME="${docker_cache_home}" \
 	-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
 	-v "${docker_home_source}:${docker_home}" \
 	-v "${docker_tmpdir}:/tmp" \
-	-v "$(pwd):/workspace" \
+	-v "$(pwd):/workspace:ro" \
 	-w /workspace \
 	"${trivy_scan_image}" \
 	fs \
 	--scanners misconfig \
-	--misconfig-scanners dockerfile \
+	--misconfig-scanners dockerfile,terraform \
+	--skip-dirs /workspace/config/infra/.terraform \
+	--skip-dirs /workspace/.cache \
+	--skip-dirs /workspace/.tmp \
+	--tf-exclude-downloaded-modules \
+	--ignorefile /workspace/config/.trivyignore \
 	--severity HIGH,CRITICAL \
 	--exit-code 1 \
 	--skip-version-check \
+	--skip-check-update \
 	/workspace
 
 printf '\n==> Run Kubernetes manifest scan\n'
@@ -250,30 +262,34 @@ if [ -n "${k8s_render_file_scan_path}" ]; then
 	docker run --rm --user "${docker_uid}:${docker_gid}" \
 		--cap-drop=ALL \
 		--security-opt=no-new-privileges:true \
+		--network=none \
 		-e HOME="${docker_home}" \
 		-e XDG_CACHE_HOME="${docker_cache_home}" \
 		-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
 		-v "${docker_home_source}:${docker_home}" \
 		-v "${docker_tmpdir}:/tmp" \
-		-v "$(pwd):/workspace" \
+		-v "$(pwd):/workspace:ro" \
 		-w /workspace \
 		"${trivy_scan_image}" \
 		config \
+		--ignorefile /workspace/config/.trivyignore \
 		--severity HIGH,CRITICAL \
 		--exit-code 1 \
 		--skip-version-check \
+		--skip-check-update \
 		"${k8s_render_file_scan_path}"
 else
 	printf '%s\n' 'No rendered Kubernetes manifests available; skipping Trivy config scan'
 fi
 
 printf '\n==> Check workflow pins\n'
-# Finally, verify that workflow action references and triggers stay within the
-# template's reviewed CI/CD policy.
+# Finally, apply the template-only workflow rules that zizmor does not cover:
+# release tag comments on pinned actions, a top-level permissions block in
+# every workflow, the issue_comment trigger ban, and no inline zizmor ignores.
 check_workflow_action_pins
 check_workflow_permissions_policy
 check_workflow_trigger_policy
-check_workflow_metadata_policy
+check_workflow_scanner_suppressions
 
 printf '\n==> Check Claude settings\n'
 # Keep the shared Claude deny rules in place. The settings check parses JSON with jq, which the dev image provides; running

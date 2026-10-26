@@ -131,7 +131,9 @@ dev_k8s_kubectl_image_lock=''
 if [ -n "${DEV_K8S_KUBECTL_IMAGE:-}" ]; then
 	dev_k8s_kubectl_image_lock=$(resolve_image "${DEV_K8S_KUBECTL_IMAGE}")
 fi
-dev_scan_gitleaks_image_lock=$(resolve_image "${DEV_SCAN_GITLEAKS_IMAGE}")
+# Older derived configs may still only set DEV_SCAN_GITLEAKS_IMAGE; lock it under
+# the new name so make update keeps working until the config is migrated.
+dev_scan_betterleaks_image_lock=$(resolve_image "${DEV_SCAN_BETTERLEAKS_IMAGE:-${DEV_SCAN_GITLEAKS_IMAGE}}")
 dev_scan_actionlint_image_lock=$(resolve_image "${DEV_SCAN_ACTIONLINT_IMAGE}")
 dev_scan_zizmor_image_lock=$(resolve_image "${DEV_SCAN_ZIZMOR_IMAGE}")
 dev_scan_trivy_image_lock=$(resolve_image "${DEV_SCAN_TRIVY_IMAGE}")
@@ -150,7 +152,7 @@ DEV_GO_IMAGE_LOCK='${dev_go_image_lock}'
 DEV_TERRAFORM_IMAGE_LOCK='${dev_terraform_image_lock}'
 DEV_K8S_HELM_IMAGE_LOCK='${dev_k8s_helm_image_lock}'
 DEV_K8S_KUBECTL_IMAGE_LOCK='${dev_k8s_kubectl_image_lock}'
-DEV_SCAN_GITLEAKS_IMAGE_LOCK='${dev_scan_gitleaks_image_lock}'
+DEV_SCAN_BETTERLEAKS_IMAGE_LOCK='${dev_scan_betterleaks_image_lock}'
 DEV_SCAN_ACTIONLINT_IMAGE_LOCK='${dev_scan_actionlint_image_lock}'
 DEV_SCAN_ZIZMOR_IMAGE_LOCK='${dev_scan_zizmor_image_lock}'
 DEV_SCAN_TRIVY_IMAGE_LOCK='${dev_scan_trivy_image_lock}'

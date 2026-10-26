@@ -15,8 +15,12 @@ organization controls.
 - GitHub Actions are pinned by full commit SHA and keep a reviewed release tag
   comment beside each external action reference.
 - `make scan` runs secret scanning, workflow linting, GitHub Actions security
-  analysis, Dockerfile misconfiguration scanning, Kubernetes manifest scanning
-  when configured, and workflow policy checks.
+  analysis, Dockerfile and Terraform misconfiguration scanning, Kubernetes
+  manifest scanning when configured, and workflow policy checks.
+- Third-party scanner images mount the checkout read-only, so they cannot change
+  the files they report on. The `make scan` scanners also run with no network
+  access; grype in `make dist` keeps network access to download its
+  vulnerability database.
 - Release builds repeat tests and scans on the tagged commit, reject tags outside
   default-branch history, and refuse to modify an existing GitHub Release.
 - Workflows that request `id-token: write` still follow the same SHA-pinning
@@ -36,7 +40,7 @@ organization controls.
   `issue_comment`, and unreviewed `workflow_run` handoffs.
 - Explicit workflow `permissions:` blocks prevent GitHub's repository defaults
   from silently broadening the `GITHUB_TOKEN` scope.
-- Metadata interpolation checks reduce the risk that PR titles, comments,
+- zizmor's `template-injection` audit reduces the risk that PR titles, comments,
   branch names, or other actor-controlled event fields become shell script.
 - Repeating tests and scans during release protects against tags that are created
   after pull request checks have completed.
@@ -99,3 +103,23 @@ or a protected automation environment, not from tracked files.
   and integrity output details.
 - [`docs/terraform.md`](../docs/terraform.md): Terraform-backed GitHub
   hardening workspace.
+
+## When To Add More Scanners
+
+The default scanners cover this template's own files. Consider adding a tool
+when a derived repository grows into one of these cases:
+
+- Terraform-heavy cloud infrastructure: [Checkov](https://github.com/bridgecrewio/checkov)
+  adds far more cloud policies and cross-resource checks than Trivy.
+- Application dependencies in `src/` lockfiles:
+  [OSV-Scanner](https://github.com/google/osv-scanner), or
+  [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) for Go,
+  reports vulnerable dependencies before release, and govulncheck checks
+  whether the vulnerable code is actually called.
+- Several CI systems or organization-wide pipeline audits:
+  [poutine](https://github.com/boostsecurityio/poutine) covers more than
+  GitHub Actions.
+
+Add new scanners the same way as the existing ones: a digest-locked image
+selector in `config/project.cfg`, a non-root `docker run` in `scripts/`, and a
+regression test in `scripts/test.sh`.
