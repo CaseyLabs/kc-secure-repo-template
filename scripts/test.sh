@@ -583,6 +583,47 @@ EOF
 	rm -rf "${workdir}"
 }
 
+test_dist_scanner_arguments() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		mkdir -p fake-bin
+		# The fake docker logs each call and stands in for the release command by
+		# writing the archive and manifest that the real container would create.
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+case "$*" in
+*'scripts/template.sh release'*)
+	mkdir -p dist
+	: >dist/kc-secure-repo-template.tar.gz
+	: >dist/template-manifest.txt
+	;;
+esac
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		. ./config/lockfile.cfg
+
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/dist.sh config/project.cfg >${TMPDIR}/template-dist-args.txt
+		# The release command writes dist/, so only it keeps a writable checkout.
+		grep -F -- 'scripts/template.sh release' docker.log | grep -Fq -- ':/workspace ' || fail 'release command should mount the repository read-write'
+		# syft and grype only read the archive and SBOM, so they cannot modify the
+		# checkout or the evidence they are reporting on.
+		syft_line=$(grep -F -- "${DEV_SCAN_SYFT_IMAGE_LOCK}" docker.log) || fail 'dist should run the digest-pinned syft image'
+		printf '%s\n' "${syft_line}" | grep -Fq -- ':/workspace:ro' || fail 'syft should mount the repository read-only'
+		grype_line=$(grep -F -- "${DEV_SCAN_GRYPE_IMAGE_LOCK}" docker.log) || fail 'dist should run the digest-pinned grype image'
+		printf '%s\n' "${grype_line}" | grep -Fq -- ':/workspace:ro' || fail 'grype should mount the repository read-only'
+	)
+	rm -rf "${workdir}"
+}
+
 test_k8s_shell_inputs_are_not_executed() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -1297,6 +1338,7 @@ template | smoke | _regression)
 		test_optional_k8s_update_compat
 		test_optional_k8s_scan_skip
 		test_scan_scanner_arguments
+		test_dist_scanner_arguments
 		test_k8s_shell_inputs_are_not_executed
 		test_k8s_render_file_scan_path
 		test_k8s_test_local_uses_kubeconfig_and_server_dry_run

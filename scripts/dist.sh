@@ -111,7 +111,10 @@ if [ "$(cd "${release_dir}" && pwd -P)" != "$(cd dist && pwd -P)" ]; then
 fi
 rm -f "${release_dir}/SECURITY-ANALYSIS.md" "${release_dir}/SHA256SUMS" "${release_dir}/ARCHIVE-SHA256SUMS" "${release_dir}/grype-report.txt" "${release_dir}/template.spdx.json"
 
-# Generate an SBOM first because Grype can scan it later.
+# Generate an SBOM first because Grype can scan it later. syft and grype only
+# read the archive and SBOM, so they mount the checkout read-only and write
+# their reports through stdout redirects; their caches stay in the writable
+# Docker home and tmp mounts.
 if [ "${enable_sbom}" = 'true' ]; then
 	syft_image=${DEV_SCAN_SYFT_IMAGE_LOCK}
 	case "${syft_image}" in
@@ -130,7 +133,7 @@ if [ "${enable_sbom}" = 'true' ]; then
 		-e XDG_CACHE_HOME="${docker_cache_home}" \
 		-v "${docker_home_source}:${docker_home}" \
 		-v "${docker_tmpdir}:/tmp" \
-		-v "$(pwd):/workspace" \
+		-v "$(pwd):/workspace:ro" \
 		"${syft_image}" \
 		"${source_path}" \
 		--source-name "${release_name}" \
@@ -155,7 +158,7 @@ if [ "${enable_grype}" = 'true' ]; then
 		-e XDG_CACHE_HOME="${docker_cache_home}" \
 		-v "${docker_home_source}:${docker_home}" \
 		-v "${docker_tmpdir}:/tmp" \
-		-v "$(pwd):/workspace" \
+		-v "$(pwd):/workspace:ro" \
 		"${grype_image}" \
 		"sbom:/workspace/${release_dir}/template.spdx.json" \
 		--fail-on "${grype_fail_on}" \
