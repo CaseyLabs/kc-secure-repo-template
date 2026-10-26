@@ -2,14 +2,14 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "Renovate opens every dependency update PR for this repository (Dependabot alerts stay on for detection only).",
-    "Routine updates are created on the first day of each month; vulnerability-fix PRs skip the schedule and cooldown."
+    "Routine updates are created on Mondays (UTC); vulnerability-fix PRs skip the schedule and cooldown."
   ],
   "extends": [
     "config:recommended",
     ":disableDependencyDashboard"
   ],
   "schedule": [
-    "* * 1 * *"
+    "* * * * 1"
   ],
   "enabledManagers": [
     "custom.regex",
