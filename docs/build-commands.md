@@ -19,6 +19,26 @@ details so local use and GitHub Actions can share the same behavior.
 These commands are the normal adopter interface. Prefer changing the scripts they
 call instead of adding many new root targets.
 
+## Configurable Workflow Commands
+
+- `config/project.cfg` sets the commands `make build`, `make test`, and
+  `make run` run inside the existing non-root dev container:
+  - `PROJECT_BUILD_COMMAND`
+  - `PROJECT_LINT_COMMAND` (runs before the tests in `make test`)
+  - `PROJECT_TEST_COMMAND`
+  - `PROJECT_RUN_COMMAND`
+- Each runs as `sh -eu -c "<command>"` from the repository root (`/workspace`).
+  The defaults are the bundled Go example commands.
+- A layered config that sources `config/project.cfg` can override any of them.
+  Configs that predate these settings fall back to the Go defaults.
+- Only the config sets these; exported environment variables are ignored.
+- An empty value turns that step into a no-op.
+- A failing build, lint, or test command fails the make target; there is no
+  silent fallback. `make run` starts its command detached, so run failures show
+  in `make status` and `make logs`.
+- The dev image must contain the toolchain the commands need; see
+  `docs/customize-template.md`.
+
 ## Specialized Commands
 
 - `make scan`: runs template security scans, workflow policy checks, AI agent

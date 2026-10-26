@@ -693,6 +693,114 @@ EOF
 	rm -rf "${workdir}"
 }
 
+# The build, lint, test, and run commands are configurable, so check what each
+# script hands to `sh -eu -c` inside the container without pulling real images.
+test_workflow_command_overrides() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		mkdir -p fake-bin
+		# The fake docker logs every call. With FAKE_DOCKER_EXEC=1 it also runs the
+		# final `docker run` argument (the project command) locally, so a failing
+		# override can prove the script fails instead of falling back.
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+case "$1" in
+image | ps) exit 0 ;;
+run)
+	if [ "${FAKE_DOCKER_EXEC:-}" = 1 ]; then
+		for last in "$@"; do :; done
+		sh -eu -c "${last}"
+		exit $?
+	fi
+	printf 'fake-container-id\n'
+	;;
+esac
+exit 0
+EOF
+		chmod +x fake-bin/docker
+
+		go_build='cd src && go build -trimpath -buildvcs=false ./cmd/app'
+		go_lint='cd src && test -z "$(gofmt -l .)" && go vet ./...'
+		go_test='cd src && go test -v ./... && go build -trimpath -buildvcs=false ./cmd/app'
+		go_run='cd src && go run ./cmd/app'
+
+		# Older layered configs do not define the new variables: the scripts must
+		# fall back to the exact Go commands they ran before.
+		grep -Ev '^PROJECT_(BUILD|LINT|TEST|RUN)_COMMAND=' config/project.cfg >config/project.cfg.legacy
+		for cfg in config/project.cfg config/project.cfg.legacy; do
+			: >docker.log
+			PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh "${cfg}" >/dev/null
+			PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/test.sh src "${cfg}" >/dev/null
+			PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/run.sh "${cfg}" >/dev/null
+			for expected in "${go_build}" "${go_lint}" "${go_test}" "${go_run}"; do
+				grep -Fq -- "sh -eu -c ${expected}" docker.log || fail "${cfg} should keep running: ${expected}"
+			done
+		done
+
+		# A layered config that sources the base config and overrides each command.
+		cat >config/project.cfg.override <<'EOF'
+. ./config/project.cfg
+PROJECT_BUILD_COMMAND='echo custom-build'
+PROJECT_LINT_COMMAND='echo custom-lint'
+PROJECT_TEST_COMMAND='echo custom-test'
+PROJECT_RUN_COMMAND='echo custom-run'
+EOF
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg.override >/dev/null
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/test.sh src config/project.cfg.override >/dev/null
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/run.sh config/project.cfg.override >/dev/null
+		for name in BUILD LINT TEST RUN; do
+			lower=$(printf '%s' "${name}" | tr '[:upper:]' '[:lower:]')
+			grep -Fq -- "sh -eu -c echo custom-${lower}" docker.log || fail "PROJECT_${name}_COMMAND override should run"
+		done
+		for unexpected in "${go_build}" "${go_lint}" "${go_test}" "${go_run}"; do
+			grep -Fq -- "${unexpected}" docker.log && fail "overridden commands must not also run: ${unexpected}"
+		done
+
+		# Only config sets the commands: an exported variable must not leak into a
+		# config that leaves it unset.
+		: >docker.log
+		PROJECT_BUILD_COMMAND='echo from-env' PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg.legacy >/dev/null
+		grep -Fq -- "sh -eu -c ${go_build}" docker.log || fail 'an exported PROJECT_BUILD_COMMAND must not replace the config fallback'
+
+		# An explicitly empty command is a deliberate no-op, not a Go fallback.
+		printf '%s\n' '. ./config/project.cfg' "PROJECT_LINT_COMMAND=''" >config/project.cfg.empty
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/test.sh src config/project.cfg.empty >/dev/null
+		grep -Fq -- "${go_lint}" docker.log && fail 'an empty PROJECT_LINT_COMMAND must not fall back to the Go lint'
+
+		# An override that fails must fail its script, with no fallback to Go.
+		for name in BUILD LINT TEST RUN; do
+			case "${name}" in
+			BUILD) script='build.sh' ;;
+			RUN) script='run.sh' ;;
+			*) script='test.sh src' ;;
+			esac
+			# Neutral commands for the other variables keep host Go out of the picture.
+			printf '%s\n' \
+				'. ./config/project.cfg' \
+				"PROJECT_BUILD_COMMAND='true'" \
+				"PROJECT_LINT_COMMAND='true'" \
+				"PROJECT_TEST_COMMAND='true'" \
+				"PROJECT_RUN_COMMAND='true'" \
+				"PROJECT_${name}_COMMAND='exit 7'" >config/project.cfg.failing
+			# shellcheck disable=SC2086
+			if FAKE_DOCKER_EXEC=1 PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/${script} config/project.cfg.failing >/dev/null 2>&1; then
+				fail "a failing PROJECT_${name}_COMMAND should fail ${script}"
+			fi
+		done
+	)
+	rm -rf "${workdir}"
+}
+
 test_dist_scanner_arguments() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -1357,7 +1465,17 @@ src)
 	*) PROJECT_CFG_FILE_PATH="./${PROJECT_CFG_FILE_PATH}" ;;
 	esac
 	[ -f "${PROJECT_CFG_FILE_PATH}" ] || fail "missing ${PROJECT_CFG_FILE_PATH}; set PROJECT_CFG_FILE to an existing config file"
+	# Read the workflow commands only from the config, never from the caller's
+	# environment, so an exported variable cannot replace the reviewed command.
+	unset PROJECT_BUILD_COMMAND PROJECT_LINT_COMMAND PROJECT_TEST_COMMAND PROJECT_RUN_COMMAND
 	. "${PROJECT_CFG_FILE_PATH}"
+
+	# Workflow commands run through `sh -eu -c` in the existing non-root dev
+	# container. Fall back to the Go example commands so older layered configs that
+	# predate these settings keep working unchanged. Only an unset variable falls
+	# back; an explicitly empty command is a deliberate no-op.
+	project_lint_command=${PROJECT_LINT_COMMAND-'cd src && test -z "$(gofmt -l .)" && go vet ./...'}
+	project_test_command=${PROJECT_TEST_COMMAND-'cd src && go test -v ./... && go build -trimpath -buildvcs=false ./cmd/app'}
 
 	# The example image name is derived from the project name to avoid collisions.
 	case "${PROJECT_NAME}" in
@@ -1392,7 +1510,7 @@ src)
 		-v "$(pwd):/workspace" \
 		-w /workspace \
 		"${src_image}" \
-		sh -eu -c 'cd src && test -z "$(gofmt -l .)" && go vet ./...'
+		sh -eu -c "${project_lint_command}"
 
 	printf '\n==> Test and build src workspace\n'
 	# Run the example unit tests and build in the same containerized environment.
@@ -1406,14 +1524,15 @@ src)
 		-v "$(pwd):/workspace" \
 		-w /workspace \
 		"${src_image}" \
-		sh -eu -c 'cd src && go test -v ./... && go build -trimpath -buildvcs=false ./cmd/app'
+		sh -eu -c "${project_test_command}"
 
 	printf '\n==> Test summary\n'
 	# Summaries make CI and local output easier to scan.
 	printf '%s\n' "Image: ${src_image}"
 	printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"
-	printf '%s\n' 'Workspace: src'
-	printf '%s\n' 'Results: lint passed, tests passed, build passed'
+	printf '%s\n' "Lint command: ${project_lint_command}"
+	printf '%s\n' "Test command: ${project_test_command}"
+	printf '%s\n' 'Results: lint passed, tests passed'
 	;;
 template | smoke | _regression)
 	# All destructive fixtures and generated outputs live in a disposable copy.
@@ -1451,6 +1570,7 @@ template | smoke | _regression)
 		test_optional_k8s_scan_skip
 		test_scan_scanner_arguments
 		test_dist_scanner_arguments
+		test_workflow_command_overrides
 		test_k8s_shell_inputs_are_not_executed
 		test_k8s_render_file_scan_path
 		test_k8s_test_local_uses_kubeconfig_and_server_dry_run
