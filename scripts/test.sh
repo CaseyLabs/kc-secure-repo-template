@@ -247,32 +247,109 @@ test_ci_change_detection_git_history() {
 	rm -rf "${history_dir}"
 }
 
-test_workflow_pull_request_target_is_rejected() {
-	workdir=$(mktemp -d)
-	root_dir=$(pwd)
+# Write one workflow fixture from stdin into an empty directory and require the
+# real pinned zizmor image to fail it with the named audit. Uses Docker, so it
+# runs in template mode on the host, not inside the network-less regression
+# container.
+assert_zizmor_rejects() {
+	fixture_dir=$(mktemp -d)
+	mkdir -p "${fixture_dir}/.github/workflows"
+	cat >"${fixture_dir}/.github/workflows/unsafe.yml"
+	if run_workflow_security_scan "${DEV_SCAN_ZIZMOR_IMAGE_LOCK}" "${fixture_dir}" >${TMPDIR}/template-zizmor.txt 2>&1; then
+		fail "zizmor should reject $1"
+	fi
+	grep -q "$2" ${TMPDIR}/template-zizmor.txt || fail "zizmor should report $2 for $1"
+	rm -rf "${fixture_dir}"
+}
 
-	(
-		cd "${workdir}"
-		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
-		tar -C "${root_dir}" -cf fixture.tar -T files.txt
-		tar -xf fixture.tar
-		rm fixture.tar files.txt
-		cat >.github/workflows/unsafe.yml <<'EOF'
+# These cases were previously enforced by awk checks in scripts/workflow-policy.sh;
+# zizmor now owns them, so keep regression coverage against the real scanner.
+test_zizmor_rejects_unsafe_workflows() {
+	# Control: a minimal safe workflow passes, so the failures below come from
+	# the unsafe construct rather than from the fixture setup.
+	fixture_dir=$(mktemp -d)
+	mkdir -p "${fixture_dir}/.github/workflows"
+	cat >"${fixture_dir}/.github/workflows/safe.yml" <<'EOF'
+name: safe
+on:
+  pull_request:
+permissions: {}
+jobs:
+  safe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo safe
+EOF
+	run_workflow_security_scan "${DEV_SCAN_ZIZMOR_IMAGE_LOCK}" "${fixture_dir}" >${TMPDIR}/template-zizmor-safe.txt 2>&1 || fail 'zizmor should accept the safe control workflow'
+	rm -rf "${fixture_dir}"
+
+	assert_zizmor_rejects 'tag-pinned actions' 'unpinned-uses' <<'EOF'
+name: unsafe
+on:
+  pull_request:
+permissions: {}
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+EOF
+	assert_zizmor_rejects 'short-SHA action pins' 'unpinned-uses' <<'EOF'
+name: unsafe
+on:
+  pull_request:
+permissions: {}
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e # v7.0.1
+        with:
+          persist-credentials: false
+EOF
+	assert_zizmor_rejects 'pull_request_target' 'dangerous-triggers' <<'EOF'
 name: unsafe
 on:
   pull_request_target:
+permissions: {}
 jobs:
   unsafe:
     runs-on: ubuntu-24.04
     steps:
       - run: echo unsafe
 EOF
-		if check_workflow_trigger_policy >${TMPDIR}/template-workflow-trigger-policy.txt 2>&1; then
-			fail 'workflow trigger policy should reject pull_request_target'
-		fi
-		grep -q 'pull_request_target is not allowed' ${TMPDIR}/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report pull_request_target'
-	)
-	rm -rf "${workdir}"
+	assert_zizmor_rejects 'workflow_run' 'dangerous-triggers' <<'EOF'
+name: unsafe
+on:
+  workflow_run:
+    workflows:
+      - test.yml
+    types:
+      - completed
+permissions:
+  contents: write
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
+	assert_zizmor_rejects 'untrusted metadata in run steps' 'template-injection' <<'EOF'
+name: unsafe
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo "${{ github.event.pull_request.title }}"
+          echo "${{ github.head_ref }}"
+EOF
 }
 
 test_workflow_issue_comment_is_rejected() {
@@ -307,40 +384,6 @@ EOF
 	rm -rf "${workdir}"
 }
 
-test_workflow_run_is_rejected_without_policy_exception() {
-	workdir=$(mktemp -d)
-	root_dir=$(pwd)
-
-	(
-		cd "${workdir}"
-		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
-		tar -C "${root_dir}" -cf fixture.tar -T files.txt
-		tar -xf fixture.tar
-		rm fixture.tar files.txt
-		cat >.github/workflows/unsafe.yml <<'EOF'
-name: unsafe
-on:
-  workflow_run:
-    workflows:
-      - test.yml
-    types:
-      - completed
-permissions:
-  contents: write
-jobs:
-  unsafe:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: echo unsafe
-EOF
-		if check_workflow_trigger_policy >${TMPDIR}/template-workflow-trigger-policy.txt 2>&1; then
-			fail 'workflow trigger policy should reject workflow_run'
-		fi
-		grep -q 'workflow_run requires a dedicated reviewed policy exception' ${TMPDIR}/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report workflow_run'
-	)
-	rm -rf "${workdir}"
-}
-
 test_workflow_missing_permissions_is_rejected() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -365,37 +408,6 @@ EOF
 			fail 'workflow permissions policy should reject missing permissions'
 		fi
 		grep -q 'missing top-level permissions block' ${TMPDIR}/template-workflow-permissions-policy.txt || fail 'workflow permissions policy should report missing permissions'
-	)
-	rm -rf "${workdir}"
-}
-
-test_workflow_metadata_interpolation_is_rejected() {
-	workdir=$(mktemp -d)
-	root_dir=$(pwd)
-
-	(
-		cd "${workdir}"
-		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
-		tar -C "${root_dir}" -cf fixture.tar -T files.txt
-		tar -xf fixture.tar
-		rm fixture.tar files.txt
-		cat >.github/workflows/unsafe.yml <<'EOF'
-name: unsafe
-on:
-  pull_request:
-permissions:
-  contents: read
-jobs:
-  unsafe:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: |
-          echo "${{ github.event.pull_request.title }}"
-EOF
-		if check_workflow_metadata_policy >${TMPDIR}/template-workflow-metadata-policy.txt 2>&1; then
-			fail 'workflow metadata policy should reject unsafe run interpolation'
-		fi
-		grep -q 'untrusted github.event metadata must not be interpolated directly into run steps' ${TMPDIR}/template-workflow-metadata-policy.txt || fail 'workflow metadata policy should report unsafe metadata interpolation'
 	)
 	rm -rf "${workdir}"
 }
@@ -1253,11 +1265,8 @@ template | smoke | _regression)
 		. ./scripts/commit-policy.sh
 		. ./scripts/agent-policy.sh
 		. ./config/lockfile.cfg
-		test_workflow_pull_request_target_is_rejected
 		test_workflow_issue_comment_is_rejected
-		test_workflow_run_is_rejected_without_policy_exception
 		test_workflow_missing_permissions_is_rejected
-		test_workflow_metadata_interpolation_is_rejected
 		test_ci_change_detection_rules
 		test_ci_change_detection_output_contract
 		test_ci_change_detection_git_history
@@ -1294,6 +1303,8 @@ template | smoke | _regression)
 		--cap-drop=ALL --security-opt=no-new-privileges:true \
 		-v "$(pwd):/workspace:ro" -w /workspace \
 		"${regression_image}" sh scripts/test.sh _regression
+	. ./scripts/workflow-policy.sh
+	test_zizmor_rejects_unsafe_workflows
 	GITHUB_TOKEN= make infra APPLY=false INFRA_UPDATE_LOCK=false
 	PROJECT_CFG_FILE=config/project.cfg make k8s >${TMPDIR}/template-k8s.txt
 	[ -f .tmp/k8s/rendered/kc-secure-template.yaml ] || fail 'make k8s should write a rendered Kubernetes manifest'

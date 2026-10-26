@@ -62,8 +62,11 @@ container-first, pinned, scanned, and reviewable.
 
 - Pull request code stays untrusted:
   - PR checks use `pull_request`.
-  - `make scan` rejects privileged triggers such as `pull_request_target`,
-    `issue_comment`, and unreviewed `workflow_run` handoffs.
+  - `make scan` rejects privileged triggers:
+    - zizmor's `dangerous-triggers` audit rejects `pull_request_target` and
+      `workflow_run`
+    - `scripts/workflow-policy.sh` rejects `issue_comment`, which zizmor
+      does not flag
   - workflows use explicit minimal permissions.
 - Workflow definitions get security-audited:
   - `actionlint` checks syntax and expression mistakes.
@@ -109,7 +112,9 @@ container-first, pinned, scanned, and reviewable.
 - Keep privileged PR metadata automation separate:
   - prefer `workflow_run` handoff patterns when needed
   - treat artifacts from PR code as untrusted
-  - add a reviewed policy exception before committing `workflow_run`
+  - add a reviewed zizmor ignore (`.github/zizmor.yml` or an inline
+    `# zizmor: ignore[dangerous-triggers]` comment) before committing
+    `workflow_run`
 
 ## Change Detection
 

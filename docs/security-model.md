@@ -36,7 +36,7 @@ organization controls.
   `issue_comment`, and unreviewed `workflow_run` handoffs.
 - Explicit workflow `permissions:` blocks prevent GitHub's repository defaults
   from silently broadening the `GITHUB_TOKEN` scope.
-- Metadata interpolation checks reduce the risk that PR titles, comments,
+- zizmor's `template-injection` audit reduces the risk that PR titles, comments,
   branch names, or other actor-controlled event fields become shell script.
 - Repeating tests and scans during release protects against tags that are created
   after pull request checks have completed.

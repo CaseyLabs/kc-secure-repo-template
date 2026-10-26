@@ -193,22 +193,9 @@ esac
 
 printf '\n==> Run GitHub Actions security scan\n'
 # zizmor complements actionlint by checking workflow security footguns without
-# executing workflow code. Offline mode keeps local and CI scans deterministic.
-docker run --rm --user "${docker_uid}:${docker_gid}" \
-	--cap-drop=ALL \
-	--security-opt=no-new-privileges:true \
-	-e HOME="${docker_home}" \
-	-e XDG_CACHE_HOME="${docker_cache_home}" \
-	-v "${docker_home_source}:${docker_home}" \
-	-v "${docker_tmpdir}:/tmp" \
-	-v "$(pwd):/workspace" \
-	-w /workspace \
-	"${zizmor_scan_image}" \
-	--offline \
-	--strict-collection \
-	--collect=workflows,actions \
-	--persona=regular \
-	.
+# executing workflow code. The shared helper in scripts/workflow-policy.sh keeps
+# the flags identical between this scan and the regression fixtures.
+run_workflow_security_scan "${zizmor_scan_image}" "$(pwd)"
 
 trivy_scan_image=${DEV_SCAN_TRIVY_IMAGE_LOCK}
 case "${trivy_scan_image}" in
@@ -263,12 +250,12 @@ else
 fi
 
 printf '\n==> Check workflow pins\n'
-# Finally, verify that workflow action references and triggers stay within the
-# template's reviewed CI/CD policy.
+# Finally, apply the template-only workflow rules that zizmor does not cover:
+# release tag comments on pinned actions, a top-level permissions block in
+# every workflow, and the issue_comment trigger ban.
 check_workflow_action_pins
 check_workflow_permissions_policy
 check_workflow_trigger_policy
-check_workflow_metadata_policy
 
 printf '\n==> Check Claude settings\n'
 # Keep the shared Claude deny rules in place. The settings check parses JSON with jq, which the dev image provides; running
