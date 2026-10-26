@@ -14,6 +14,24 @@ esac
 	exit 1
 }
 
+# Optional flags after the config path.
+# - --refresh-package-snapshot moves DEV_PACKAGE_SNAPSHOT_LOCK to the current
+#   UTC day so apt installs pick up Debian security fixes. Renovate passes it
+#   when it refreshes image locks; plain `make update` keeps the reviewed value.
+refresh_package_snapshot=false
+if [ "$#" -gt 0 ]; then
+	shift
+fi
+for arg in "$@"; do
+	case "${arg}" in
+	--refresh-package-snapshot) refresh_package_snapshot=true ;;
+	*)
+		printf 'unknown update option: %s\n' "${arg}" >&2
+		exit 1
+		;;
+	esac
+done
+
 # Stop with a clear message when a host helper command is unavailable.
 require_command() {
 	command -v "$1" >/dev/null 2>&1 || {
@@ -140,6 +158,12 @@ dev_scan_trivy_image_lock=$(resolve_image "${DEV_SCAN_TRIVY_IMAGE}")
 dev_scan_syft_image_lock=$(resolve_image "${DEV_SCAN_SYFT_IMAGE}")
 dev_scan_grype_image_lock=$(resolve_image "${DEV_SCAN_GRYPE_IMAGE}")
 dev_renovate_image_lock=$(resolve_image "${DEV_RENOVATE_IMAGE}")
+
+# snapshot.debian.org serves the newest snapshot at or before this timestamp,
+# so midnight UTC today is always a valid, immutable package set.
+if [ "${refresh_package_snapshot}" = true ]; then
+	DEV_PACKAGE_SNAPSHOT_LOCK=$(date -u +%Y%m%dT000000Z)
+fi
 
 # Rewrite the lock file that runtime scripts source during builds and scans.
 cat >config/lockfile.cfg <<EOF
