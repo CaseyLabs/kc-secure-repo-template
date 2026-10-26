@@ -26,7 +26,6 @@ This project's `.github` folder contains the GitHub Actions CI configs and workf
   - scheduled/manual maintenance
 - `dependabot.yml`
   - GitHub Actions updates
-  - Dockerfile dependency updates
 - `renovate.json`
   - self-hosted Renovate settings
   - updates for tool and image values in `config/project.cfg`
