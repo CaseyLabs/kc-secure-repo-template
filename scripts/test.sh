@@ -557,6 +557,12 @@ EOF
 		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-dirs /workspace/config/infra/.terraform' || fail 'Trivy should skip downloaded Terraform providers and modules'
 		printf '%s\n' "${trivy_line}" | grep -Fq -- '--ignorefile /workspace/config/.trivyignore' || fail 'Trivy should read the reviewed ignore file'
 
+		# actionlint keeps its bundled shellcheck enabled for workflow run: blocks.
+		actionlint_line=$(grep -F -- "${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}" docker.log) || fail 'scan should run the digest-pinned actionlint image'
+		printf '%s\n' "${actionlint_line}" | grep -Fq -- '-shellcheck=' && fail 'actionlint should keep shellcheck enabled'
+		printf '%s\n' "${actionlint_line}" | grep -Fq -- '--network=none' || fail 'actionlint should run without network access'
+		printf '%s\n' "${actionlint_line}" | grep -Fq -- ':/workspace:ro' || fail 'actionlint should mount the repository read-only'
+
 		# With Git metadata the scan covers history through the git subcommand.
 		git init -q .
 		git -c user.name=fixture -c user.email=fixture@example.invalid commit -q --allow-empty -m "[test] fixture: init"

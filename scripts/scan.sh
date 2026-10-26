@@ -168,17 +168,21 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 
 printf '\n==> Run workflow lint\n'
 # Use actionlint in a container so CI and local runs use the same tool version.
+# The image bundles shellcheck, which actionlint runs on every run: block, so
+# shell quoting and word-splitting bugs in workflows fail the scan. pyflakes is
+# disabled because the workflows contain no Python steps. actionlint only reads
+# the checkout, so it gets no network and a read-only mount.
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
+	--network=none \
 	-e HOME="${docker_home}" \
 	-e XDG_CACHE_HOME="${docker_cache_home}" \
 	-v "${docker_home_source}:${docker_home}" \
 	-v "${docker_tmpdir}:/tmp" \
-	-v "$(pwd):/workspace" \
+	-v "$(pwd):/workspace:ro" \
 	-w /workspace \
 	"${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}" \
-	-shellcheck= \
 	-pyflakes= \
 	.github/workflows/*.yml
 
