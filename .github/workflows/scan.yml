@@ -38,6 +38,18 @@ jobs:
       # Buildx enables Docker layer cache export/import for the scan image.
       - name: Set up Docker build cache
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # docker buildx reads the Actions cache token and URLs from the
+      # environment, but GitHub only passes them to actions, not to `run:`
+      # steps. Export only the cache variables (not every ACTIONS_* value) so
+      # the type=gha cache in DOCKER_BUILD_EXTRA_ARGS can import and export
+      # layers. Without this step Buildx silently skips the cache.
+      - name: Expose Actions cache to Docker Buildx
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            for (const name of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_CACHE_URL', 'ACTIONS_CACHE_SERVICE_V2']) {
+              if (process.env[name]) core.exportVariable(name, process.env[name]);
+            }
       - name: Run secret and workflow scans
         env:
           # scripts/scan.sh reads this variable and passes it to docker buildx.

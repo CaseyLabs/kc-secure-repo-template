@@ -50,6 +50,11 @@ call instead of adding many new root targets.
   outputs used by `make dist` and the release workflow.
 - `DOCKER_BUILD_EXTRA_ARGS`: lets CI provide Buildx cache options without
   changing local defaults.
+  - `type=gha` caches only work after the workflow exports the Actions cache
+    token to `run:` steps; see the "Expose Actions cache to Docker Buildx"
+    step in `.github/workflows/test.yml`.
+  - The release workflow stays uncached so release artifacts never reuse
+    layers written by other runs.
 - `DOCKER_UID`, `DOCKER_GID`, `DOCKER_HOME`, `DOCKER_HOME_SOURCE`, and
   `DOCKER_TMPDIR`: control container user and cache paths for bind-mounted
   workflows.
