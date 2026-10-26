@@ -3,6 +3,7 @@
   "description": [
     "Renovate opens every dependency update PR for this repository (Dependabot alerts stay on for detection only).",
     "Routine updates are created on Mondays (UTC); vulnerability-fix PRs skip the schedule and cooldown.",
+    "prCreation not-pending holds each routine PR until its 7-day stability check passes, because strict filtering cannot hold back digest-only refreshes.",
     "PR titles and commits follow docs/gitops-conventions.md: [deps] <scope>: <summary>; each package rule sets its scope."
   ],
   "extends": [
@@ -70,6 +71,7 @@
       "groupName": "project tooling and images",
       "minimumReleaseAge": "7 days",
       "internalChecksFilter": "strict",
+      "prCreation": "not-pending",
       "postUpgradeTasks": {
         "commands": [
           "sh scripts/update.sh config/project.cfg --refresh-package-snapshot"
@@ -112,6 +114,7 @@
       "groupName": "github-actions",
       "minimumReleaseAge": "7 days",
       "internalChecksFilter": "strict",
+      "prCreation": "not-pending",
       "commitMessagePrefix": "[deps] actions:"
     },
     {
@@ -121,6 +124,7 @@
       ],
       "minimumReleaseAge": "7 days",
       "internalChecksFilter": "strict",
+      "prCreation": "not-pending",
       "commitMessagePrefix": "[deps] go:"
     }
   ]
