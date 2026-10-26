@@ -35,13 +35,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # Buildx enables Docker layer cache export/import for the scan image.
-      - name: Set up Docker build cache
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Run secret and workflow scans
         env:
-          # scripts/scan.sh reads this variable and passes it to docker buildx.
-          DOCKER_BUILD_EXTRA_ARGS: --cache-from type=gha,scope=project-image --cache-to type=gha,scope=project-image,mode=max
           # The commit attribution check rechecks this range (PR commits, or the
           # commits a push added). Commit SHAs go through env, never directly into
           # `run`; an unknown base makes the check cover the head's full history.

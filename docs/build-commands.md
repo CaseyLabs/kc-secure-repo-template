@@ -48,8 +48,18 @@ call instead of adding many new root targets.
 - `APPLY=true`: lets `make infra` apply the generated Terraform plan.
 - `ENABLE_SBOM`, `ENABLE_GRYPE`, `GRYPE_FAIL_ON`: control release integrity
   outputs used by `make dist` and the release workflow.
-- `DOCKER_BUILD_EXTRA_ARGS`: lets CI provide Buildx cache options without
-  changing local defaults.
+- `DOCKER_BUILD_EXTRA_ARGS`: optional extra `docker buildx build` flags, such
+  as a layer cache, without changing local defaults.
+  - When set, `scripts/build.sh`, `scripts/scan.sh`, and `scripts/dist.sh` build
+    with `docker buildx build --load` instead of plain `docker build`.
+  - The template's workflows leave it unset. On GitHub-hosted runners, plain
+    `docker build` was faster than a warm Buildx `type=gha` cache: Buildx setup
+    and the `--load` import into Docker cost more than the cache saved.
+  - A `type=gha` cache also needs the Actions cache token exported to `run:`
+    steps, which GitHub only gives to actions; without it Buildx silently
+    skips the cache.
+  - Keep the release workflow uncached so release artifacts never reuse layers
+    written by other runs.
 - `DOCKER_UID`, `DOCKER_GID`, `DOCKER_HOME`, `DOCKER_HOME_SOURCE`, and
   `DOCKER_TMPDIR`: control container user and cache paths for bind-mounted
   workflows.
