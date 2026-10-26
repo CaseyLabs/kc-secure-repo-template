@@ -48,26 +48,21 @@ done
 # Load the reviewed image tags and version selectors that this script will lock down.
 . "${project_cfg_file}"
 
-# Docker Hub requires a short-lived token before manifest metadata can be fetched.
-docker_hub_token() {
-	token_response=$(curl -fsSL "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$1:pull") || return 1
-	token=$(printf '%s\n' "${token_response}" | jq -er '.token | select(type == "string" and length > 0)') || return 1
-	[ -n "${token}" ] || {
-		printf 'registry returned an empty Docker Hub token for %s\n' "$1" >&2
-		return 1
-	}
-	printf '%s\n' "${token}"
+# Fetch an anonymous pull token from a registry token endpoint (URL in $1).
+registry_token() {
+	token_response=$(curl -fsSL "$1") || return 1
+	printf '%s\n' "${token_response}" | jq -er '.token | select(type == "string" and length > 0)'
 }
 
-# Resolve a Docker Hub tag into its immutable digest.
-docker_hub_digest() {
-	token=$(docker_hub_token "$1") || return 1
+# Look up the manifest digest for host $1, token $2, repository $3, and tag $4.
+# Every registry below shares this; only the token endpoint differs.
+registry_manifest_digest() {
 	headers=$(curl -fsSI \
-		-H "Authorization: Bearer ${token}" \
+		-H "Authorization: Bearer $2" \
 		-H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-		"https://registry-1.docker.io/v2/$1/manifests/$2") || return 1
+		"https://$1/v2/$3/manifests/$4") || return 1
 	digest=$(printf '%s\n' "${headers}" | tr -d '\r' | sed -n 's/^docker-content-digest: //Ip' | head -n 1)
-	validate_digest "${digest}" "$1:$2"
+	validate_digest "${digest}" "$3:$4"
 }
 
 validate_digest() {
@@ -82,16 +77,27 @@ validate_digest() {
 	printf 'sha256:%s\n' "${digest_hex}"
 }
 
-# GHCR uses a similar API, but with a different token endpoint.
+# Resolve a Docker Hub tag into its immutable digest.
+docker_hub_digest() {
+	token=$(registry_token "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$1:pull") || {
+		printf 'registry returned no Docker Hub token for %s\n' "$1" >&2
+		return 1
+	}
+	registry_manifest_digest registry-1.docker.io "${token}" "$1" "$2"
+}
+
+# GHCR uses the same API, but with a different token endpoint.
 ghcr_digest() {
-	token_response=$(curl -fsSL "https://ghcr.io/token?scope=repository:$1:pull") || return 1
-	token=$(printf '%s\n' "${token_response}" | jq -er '.token | select(type == "string" and length > 0)') || return 1
-	headers=$(curl -fsSI \
-		-H "Authorization: Bearer ${token}" \
-		-H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-		"https://ghcr.io/v2/$1/manifests/$2") || return 1
-	digest=$(printf '%s\n' "${headers}" | tr -d '\r' | sed -n 's/^docker-content-digest: //Ip' | head -n 1)
-	validate_digest "${digest}" "$1:$2"
+	token=$(registry_token "https://ghcr.io/token?scope=repository:$1:pull") || return 1
+	registry_manifest_digest ghcr.io "${token}" "$1" "$2"
+}
+
+# gcr.io (Google Container Registry / distroless) issues anonymous pull tokens
+# from its own endpoint. The tag is kept in the lock (decision D2) so Renovate
+# can still match it for digest refreshes.
+gcr_digest() {
+	token=$(registry_token "https://gcr.io/v2/token?service=gcr.io&scope=repository:$1:pull") || return 1
+	registry_manifest_digest gcr.io "${token}" "$1" "$2"
 }
 
 # Accept common image formats and return a digest-pinned reference for each one.
@@ -100,6 +106,18 @@ resolve_image() {
 	*@sha256:*)
 		digest=$(validate_digest "${1##*@}" "$1") || return 1
 		resolved_image="${1%@*}@${digest}"
+		;;
+	gcr.io/*:*)
+		repo=${1#gcr.io/}
+		tag=${repo##*:}
+		repo=${repo%:*}
+		digest=$(gcr_digest "${repo}" "${tag}") || return 1
+		resolved_image="${1}@${digest}"
+		;;
+	gcr.io/*)
+		repo=${1#gcr.io/}
+		digest=$(gcr_digest "${repo}" latest) || return 1
+		resolved_image="${1}:latest@${digest}"
 		;;
 	ghcr.io/*:*)
 		repo=${1#ghcr.io/}
@@ -137,18 +155,20 @@ resolve_image() {
 	printf '%s\n' "${resolved_image}"
 }
 
+# Resolve a selector that may be blank; a blank selector prints nothing.
+resolve_optional_image() {
+	[ -z "$1" ] || resolve_image "$1"
+}
+
 # Resolve every reviewed image selector to the exact digest committed in the repo.
 dev_base_image_lock=$(resolve_image "${DEV_BASE_IMAGE}")
 dev_go_image_lock=$(resolve_image "${DEV_GO_IMAGE}")
 dev_terraform_image_lock=$(resolve_image "${DEV_TERRAFORM_IMAGE}")
-dev_k8s_helm_image_lock=''
-if [ -n "${DEV_K8S_HELM_IMAGE:-}" ]; then
-	dev_k8s_helm_image_lock=$(resolve_image "${DEV_K8S_HELM_IMAGE}")
-fi
-dev_k8s_kubectl_image_lock=''
-if [ -n "${DEV_K8S_KUBECTL_IMAGE:-}" ]; then
-	dev_k8s_kubectl_image_lock=$(resolve_image "${DEV_K8S_KUBECTL_IMAGE}")
-fi
+# Optional images (distroless runtime base, k8s tools) keep an empty lock when
+# their selector is blank or absent, instead of failing the update.
+dev_distroless_static_image_lock=$(resolve_optional_image "${DEV_DISTROLESS_STATIC_IMAGE:-}")
+dev_k8s_helm_image_lock=$(resolve_optional_image "${DEV_K8S_HELM_IMAGE:-}")
+dev_k8s_kubectl_image_lock=$(resolve_optional_image "${DEV_K8S_KUBECTL_IMAGE:-}")
 # Older derived configs may still only set DEV_SCAN_GITLEAKS_IMAGE; lock it under
 # the new name so make update keeps working until the config is migrated.
 dev_scan_betterleaks_image_lock=$(resolve_image "${DEV_SCAN_BETTERLEAKS_IMAGE:-${DEV_SCAN_GITLEAKS_IMAGE}}")
@@ -173,6 +193,7 @@ cat >config/lockfile.cfg <<EOF
 DEV_PACKAGE_SNAPSHOT_LOCK='${DEV_PACKAGE_SNAPSHOT_LOCK}'
 DEV_BASE_IMAGE_LOCK='${dev_base_image_lock}'
 DEV_GO_IMAGE_LOCK='${dev_go_image_lock}'
+DEV_DISTROLESS_STATIC_IMAGE_LOCK='${dev_distroless_static_image_lock}'
 DEV_TERRAFORM_IMAGE_LOCK='${dev_terraform_image_lock}'
 DEV_K8S_HELM_IMAGE_LOCK='${dev_k8s_helm_image_lock}'
 DEV_K8S_KUBECTL_IMAGE_LOCK='${dev_k8s_kubectl_image_lock}'

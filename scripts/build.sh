@@ -27,6 +27,8 @@ unset PROJECT_BUILD_COMMAND PROJECT_LINT_COMMAND PROJECT_TEST_COMMAND PROJECT_RU
 # predate these settings keep working unchanged. Only an unset variable falls
 # back; an explicitly empty command is a deliberate no-op.
 project_build_command=${PROJECT_BUILD_COMMAND-'cd src && go build -trimpath -buildvcs=false ./cmd/app'}
+# Opt-in distroless runtime image; blank (or unset in older configs) skips it.
+project_runtime_image=${PROJECT_RUNTIME_IMAGE-}
 
 # Reuse the project name to derive the example image name used by the bundled Go app.
 case "${PROJECT_NAME}" in
@@ -43,6 +45,28 @@ docker_cache_home=${DOCKER_CACHE_HOME:-${docker_home}/.cache}
 docker_home_source=${DOCKER_HOME_SOURCE:-$(pwd)/.cache/docker-home}
 docker_tmpdir=${DOCKER_TMPDIR:-$(pwd)/.cache/docker-tmp}
 mkdir -p "${docker_home_source}" "${docker_tmpdir}"
+
+# Opt-in distroless runtime image. It does not depend on the dev image, so it is
+# built first: the lock checks then fail fast, before the slower dev build.
+# Both locks must be digest-pinned, so the build never falls back to a mutable tag.
+require_pinned_lock() {
+	if ! printf '%s\n' "$2" | grep -Eq '^[^@]+@sha256:[a-f0-9]{64}$'; then
+		printf '%s must be pinned by digest to build PROJECT_RUNTIME_IMAGE; run make update\n' "$1" >&2
+		exit 1
+	fi
+}
+if [ -n "${project_runtime_image}" ]; then
+	require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}"
+	require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}"
+	printf '\n==> Build runtime image\n'
+	# Plain `docker build` (no Buildx cache) keeps this path simple; the stage is small.
+	docker build \
+		--build-arg RUNTIME_BUILD_IMAGE="${DEV_GO_IMAGE_LOCK}" \
+		--build-arg RUNTIME_BASE_IMAGE="${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" \
+		--target runtime \
+		-f Dockerfile \
+		-t "${project_runtime_image}" .
+fi
 
 printf '\n==> Build src image\n'
 # GitHub Actions can opt into Buildx cache export/import without changing local defaults.
@@ -86,4 +110,7 @@ printf '\n==> Build summary\n'
 printf '%s\n' "Image: ${src_image}"
 printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"
 printf '%s\n' "Build command: ${project_build_command}"
+if [ -n "${project_runtime_image}" ]; then
+	printf '%s\n' "Runtime image: ${project_runtime_image}"
+fi
 printf '%s\n' 'Result: build passed'

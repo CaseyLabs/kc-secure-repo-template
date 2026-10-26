@@ -117,3 +117,62 @@ check_workflow_scanner_suppressions() {
 	printf 'inline zizmor ignore is not allowed in template workflows\n' >&2
 	return 1
 }
+
+# Policy for the optional distroless `runtime` stage in the Dockerfile. Derived
+# repositories that delete the stage are not checked. When the stage exists it
+# must (1) build FROM the `RUNTIME_BASE_IMAGE` arg that `make build` fills with
+# the digest lock, (2) keep that lock digest-pinned, (3) end as a non-root user,
+# and (4) use an exec-form ENTRYPOINT, because distroless images have no shell.
+# An empty lock is allowed: it means the selector was left blank, and
+# `make build` refuses to build the runtime image without a pinned lock.
+# Arguments: Dockerfile path, lockfile path (both default to the repository's).
+check_runtime_image_policy() {
+	runtime_dockerfile=${1:-Dockerfile}
+	runtime_lockfile=${2:-config/lockfile.cfg}
+
+	# Print the `AS runtime` FROM line, then that stage's instructions. Dockerfile
+	# keywords and stage names are case-insensitive, so match on lowercase.
+	runtime_stage=$(awk '
+		{ line = tolower($0) }
+		line ~ /^[[:space:]]*from[[:space:]]/ {
+			in_stage = (line ~ /[[:space:]]as[[:space:]]+runtime[[:space:]]*$/)
+		}
+		in_stage { print }
+	' "${runtime_dockerfile}")
+	[ -n "${runtime_stage}" ] || return 0
+
+	runtime_from=$(printf '%s\n' "${runtime_stage}" | head -n 1)
+	case "${runtime_from}" in
+	*'${RUNTIME_BASE_IMAGE'[:}]*) ;;
+	*)
+		printf 'runtime stage in %s must build FROM ${RUNTIME_BASE_IMAGE...}\n' "${runtime_dockerfile}" >&2
+		return 1
+		;;
+	esac
+
+	runtime_lock=$(sed -n "s/^DEV_DISTROLESS_STATIC_IMAGE_LOCK='\(.*\)'\$/\1/p" "${runtime_lockfile}")
+	if [ -n "${runtime_lock}" ] && ! printf '%s\n' "${runtime_lock}" | grep -Eq '^[^@]+@sha256:[a-f0-9]{64}$'; then
+		printf 'DEV_DISTROLESS_STATIC_IMAGE_LOCK must be pinned by digest in %s\n' "${runtime_lockfile}" >&2
+		return 1
+	fi
+
+	# The last USER instruction wins in Docker, so judge that one. Only a literal
+	# user name or non-zero UID passes: root, UID 0 (in any spelling), and
+	# variables that cannot be checked here are rejected.
+	runtime_user=$(printf '%s\n' "${runtime_stage}" | sed -n 's/^[[:space:]]*[Uu][Ss][Ee][Rr][[:space:]]\{1,\}\([^[:space:]]*\).*/\1/p' | tail -n 1)
+	runtime_user=${runtime_user%%:*}
+	if [ -z "${runtime_user}" ] || [ "${runtime_user}" = root ] ||
+		printf '%s\n' "${runtime_user}" | grep -Eq '^0+$|[$]'; then
+		printf 'runtime stage in %s must set a non-root USER\n' "${runtime_dockerfile}" >&2
+		return 1
+	fi
+
+	runtime_entrypoint=$(printf '%s\n' "${runtime_stage}" | sed -n 's/^[[:space:]]*[Ee][Nn][Tt][Rr][Yy][Pp][Oo][Ii][Nn][Tt][[:space:]]\{1,\}//p' | tail -n 1)
+	case "${runtime_entrypoint}" in
+	'['*) ;;
+	*)
+		printf 'runtime stage in %s must use an exec-form ENTRYPOINT\n' "${runtime_dockerfile}" >&2
+		return 1
+		;;
+	esac
+}

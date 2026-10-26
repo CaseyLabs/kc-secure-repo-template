@@ -21,6 +21,11 @@ Renovate is configured in `.github/renovate.json` and runs through
 - `config/infra/.terraform.lock.hcl`
   - Renovate's `terraform` manager rewrites provider hashes in the same PR as
     the provider bump, so `-lockfile=readonly` validation keeps passing
+- The distroless runtime base (`DEV_DISTROLESS_STATIC_IMAGE`)
+  - the selector keeps the `:nonroot` tag; only the digest in
+    `config/lockfile.cfg` moves, via the digest-refresh rule above and
+    `make update`
+  - `scripts/update.sh` resolves `gcr.io` selectors and skips a blank one
 - GitHub Actions in `.github/workflows/`
   - full-SHA pins with version comments, grouped into one PR
 - Go modules in `src/go.mod`
