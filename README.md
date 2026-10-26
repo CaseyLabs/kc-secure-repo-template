@@ -205,11 +205,19 @@ This template also uses third-party tools to automate the upgrade of project ima
 
 ### Security Scanners
 
-This project uses the following open-source tools as part of its security scanning workflows:
+This project uses the following open-source tools as part of its security scanning workflows. Each one covers a job the others do not:
 
-- [actionlint](https://github.com/rhysd/actionlint): lints GitHub Actions workflow files.
+- [actionlint](https://github.com/rhysd/actionlint): lints GitHub Actions workflow files, including `run:` scripts through its bundled shellcheck.
+  - Why: catches broken expressions, invalid keys, and shell quoting bugs before a workflow runs.
 - [betterleaks](https://github.com/betterleaks/betterleaks): scans the repository, including Git history when available, for leaked secrets (the maintained successor to gitleaks).
-- [grype](https://github.com/anchore/grype): scans the generated SBOM for known vulnerabilities during release builds.
+  - Why: catches secrets locally and in pull requests, before GitHub's server-side secret scanning and push protection would see them.
+- [grype](https://github.com/anchore/grype): scans the generated SBOM for known vulnerabilities during release builds, and weekly for published releases.
+  - Why: release evidence includes a vulnerability report, and newly disclosed CVEs in already-published releases still surface.
 - [syft](https://github.com/anchore/syft): generates SBOM output for release artifacts.
-- [trivy](https://github.com/aquasecurity/trivy): scans for Dockerfile misconfigurations in the repository.
+  - Why: the SBOM lists the pinned GitHub Actions and Terraform provider shipped in the template archive, and is what grype scans.
+- [trivy](https://github.com/aquasecurity/trivy): scans Dockerfiles, the Terraform under `config/infra`, and rendered Kubernetes manifests for misconfigurations.
+  - Why: none of the other tools check infrastructure posture. It runs offline from its bundled checks; reviewed suppressions live in `config/.trivyignore`.
 - [zizmor](https://github.com/zizmorcore/zizmor): scans GitHub Actions workflows for security footguns.
+  - Why: rejects unpinned actions, privileged triggers, template injection, and broad token permissions. `scripts/workflow-policy.sh` adds only the template rules zizmor does not cover.
+
+See [docs/security-model.md](docs/security-model.md) for when a derived repository should add more scanners.
