@@ -38,6 +38,13 @@ generated references, and moves `DEV_PACKAGE_SNAPSHOT_LOCK` to the current UTC
 day so Debian packages pick up security fixes. Plain `make update` keeps the
 reviewed snapshot unchanged.
 
+PR titles and commit subjects follow `docs/gitops-conventions.md`:
+
+- `[deps] tooling: update project tooling and images`
+- `[deps] actions: update github-actions`
+- `[deps] go: update <module> ...` for Go modules
+- `[deps] renovate: ...` as the fallback for anything not matched above
+
 ## Schedule and cooldowns
 
 - The workflow runs daily.

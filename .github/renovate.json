@@ -2,7 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "Renovate opens every dependency update PR for this repository (Dependabot alerts stay on for detection only).",
-    "Routine updates are created on Mondays (UTC); vulnerability-fix PRs skip the schedule and cooldown."
+    "Routine updates are created on Mondays (UTC); vulnerability-fix PRs skip the schedule and cooldown.",
+    "PR titles and commits follow docs/gitops-conventions.md: [deps] <scope>: <summary>; each package rule sets its scope."
   ],
   "extends": [
     "config:recommended",
@@ -20,6 +21,8 @@
   "postUpdateOptions": [
     "gomodTidy"
   ],
+  "commitMessagePrefix": "[deps] renovate:",
+  "commitMessageAction": "update",
   "customManagers": [
     {
       "customType": "regex",
@@ -78,7 +81,8 @@
           "config/infra/versions.tf"
         ],
         "executionMode": "branch"
-      }
+      },
+      "commitMessagePrefix": "[deps] tooling:"
     },
     {
       "description": "Tag and version changes come from config/project.cfg selectors; lockfile.cfg only receives digest refreshes",
@@ -107,7 +111,8 @@
       ],
       "groupName": "github-actions",
       "minimumReleaseAge": "7 days",
-      "internalChecksFilter": "strict"
+      "internalChecksFilter": "strict",
+      "commitMessagePrefix": "[deps] actions:"
     },
     {
       "description": "Wait before adopting new Go module releases",
@@ -115,7 +120,8 @@
         "gomod"
       ],
       "minimumReleaseAge": "7 days",
-      "internalChecksFilter": "strict"
+      "internalChecksFilter": "strict",
+      "commitMessagePrefix": "[deps] go:"
     }
   ]
 }
