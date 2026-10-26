@@ -3,7 +3,7 @@ name: renovate.yml
 
 # This workflow can be run manually and also runs daily.
 # - Daily runs let vulnerability-fix PRs open within a day; routine updates
-#   still wait for the monthly `schedule` in `.github/renovate.json`.
+#   still wait for the weekly `schedule` in `.github/renovate.json`.
 on:
   workflow_dispatch:
   schedule:

@@ -41,8 +41,9 @@ reviewed snapshot unchanged.
 ## Schedule and cooldowns
 
 - The workflow runs daily.
-- Routine update PRs are created on the first day of each month
-  (`"schedule": ["* * 1 * *"]`).
+- Routine update PRs are created on Mondays, UTC
+  (`"schedule": ["* * * * 1"]`). Weekly batches keep each PR small while the
+  7-day cooldown below still filters out brand-new releases.
 - Routine updates wait 7 days after an upstream release
   (`minimumReleaseAge`). This timing defense helps avoid immediately adopting a
   newly published action, image, or module before yanks, malicious releases, or
