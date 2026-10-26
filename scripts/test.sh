@@ -454,7 +454,7 @@ EOF
 			-e "s#^DEV_BASE_IMAGE=.*#DEV_BASE_IMAGE='${DEV_BASE_IMAGE_LOCK}'#" \
 			-e "s#^DEV_GO_IMAGE=.*#DEV_GO_IMAGE='${DEV_GO_IMAGE_LOCK}'#" \
 			-e "s#^DEV_TERRAFORM_IMAGE=.*#DEV_TERRAFORM_IMAGE='${DEV_TERRAFORM_IMAGE_LOCK}'#" \
-			-e "s#^DEV_SCAN_GITLEAKS_IMAGE=.*#DEV_SCAN_GITLEAKS_IMAGE='${DEV_SCAN_GITLEAKS_IMAGE_LOCK}'#" \
+			-e "s#^DEV_SCAN_BETTERLEAKS_IMAGE=.*#DEV_SCAN_BETTERLEAKS_IMAGE='${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_ACTIONLINT_IMAGE=.*#DEV_SCAN_ACTIONLINT_IMAGE='${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_ZIZMOR_IMAGE=.*#DEV_SCAN_ZIZMOR_IMAGE='${DEV_SCAN_ZIZMOR_IMAGE_LOCK}'#" \
 			-e "s#^DEV_SCAN_TRIVY_IMAGE=.*#DEV_SCAN_TRIVY_IMAGE='${DEV_SCAN_TRIVY_IMAGE_LOCK}'#" \
@@ -499,6 +499,58 @@ EOF
 		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-optional-k8s.txt
 		grep -q 'Optional Kubernetes scaffold not configured; skipping Helm render and manifest scan' ${TMPDIR}/template-scan-optional-k8s.txt || fail 'scan should report when it skips the optional Kubernetes scaffold'
 		grep -q 'No rendered Kubernetes manifests available; skipping Trivy config scan' ${TMPDIR}/template-scan-optional-k8s.txt || fail 'scan should skip the Kubernetes Trivy pass when nothing was rendered'
+	)
+	rm -rf "${workdir}"
+}
+
+# Record every scanner container invocation so the argument contract (pinned
+# image, read-only mounts, no network where the scanner needs none) is checked
+# without pulling real images.
+test_scan_scanner_arguments() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		rm -rf config/k8s
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		sed -e "/^DEV_K8S_HELM_IMAGE=/d" config/project.cfg >config/project.cfg.test
+		. ./config/lockfile.cfg
+
+		# Without Git metadata the secret scan falls back to a plain directory scan.
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args.txt
+		secret_line=$(grep -F -- "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}" docker.log) || fail 'scan should run the digest-pinned betterleaks image'
+		printf '%s\n' "${secret_line}" | grep -Eq "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK} dir /repo( |$)" || fail 'scan should use betterleaks dir without Git metadata'
+		printf '%s\n' "${secret_line}" | grep -Fq -- '--network=none' || fail 'secret scan should run without network access'
+		printf '%s\n' "${secret_line}" | grep -Fq -- ':/repo:ro' || fail 'secret scan should mount the repository read-only'
+		printf '%s\n' "${secret_line}" | grep -Fq -- '--validation' && fail 'secret scan must not validate findings against live APIs'
+
+		# With Git metadata the scan covers history through the git subcommand.
+		git init -q .
+		git -c user.name=fixture -c user.email=fixture@example.invalid commit -q --allow-empty -m "[test] fixture: init"
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args-git.txt
+		grep -F -- "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}" docker.log | grep -Eq "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK} git /repo( |$)" || fail 'scan should use betterleaks git when Git metadata exists'
+
+		# Derived repositories that still only set the legacy gitleaks lock keep a
+		# working secret scan instead of failing on an unset variable.
+		legacy_image='ghcr.io/example/legacy-secret-scanner@sha256:0000000000000000000000000000000000000000000000000000000000000000'
+		sed -e '/^DEV_SCAN_BETTERLEAKS_IMAGE_LOCK=/d' config/lockfile.cfg >config/lockfile.cfg.new
+		printf "DEV_SCAN_GITLEAKS_IMAGE_LOCK='%s'\n" "${legacy_image}" >>config/lockfile.cfg.new
+		mv config/lockfile.cfg.new config/lockfile.cfg
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args-legacy.txt
+		grep -Fq -- "${legacy_image} git /repo" docker.log || fail 'scan should fall back to the legacy DEV_SCAN_GITLEAKS_IMAGE_LOCK'
 	)
 	rm -rf "${workdir}"
 }
@@ -1219,6 +1271,7 @@ template | smoke | _regression)
 		sh scripts/test-release.sh
 		test_optional_k8s_update_compat
 		test_optional_k8s_scan_skip
+		test_scan_scanner_arguments
 		test_k8s_shell_inputs_are_not_executed
 		test_k8s_render_file_scan_path
 		test_k8s_test_local_uses_kubeconfig_and_server_dry_run

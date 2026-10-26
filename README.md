@@ -208,7 +208,7 @@ This template also uses third-party tools to automate the upgrade of project ima
 This project uses the following open-source tools as part of its security scanning workflows:
 
 - [actionlint](https://github.com/rhysd/actionlint): lints GitHub Actions workflow files.
-- [gitleaks](https://github.com/gitleaks/gitleaks): scans the repository, including Git history when available, for leaked secrets.
+- [betterleaks](https://github.com/betterleaks/betterleaks): scans the repository, including Git history when available, for leaked secrets (the maintained successor to gitleaks).
 - [grype](https://github.com/anchore/grype): scans the generated SBOM for known vulnerabilities during release builds.
 - [syft](https://github.com/anchore/syft): generates SBOM output for release artifacts.
 - [trivy](https://github.com/aquasecurity/trivy): scans for Dockerfile misconfigurations in the repository.

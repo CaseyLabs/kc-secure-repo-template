@@ -134,42 +134,37 @@ else
 fi
 
 # Secret scanning is security-sensitive, so require a digest-pinned scanner image.
-secret_scan_image=${DEV_SCAN_GITLEAKS_IMAGE_LOCK}
+# Derived repositories that have not renamed their lock yet keep scanning with
+# DEV_SCAN_GITLEAKS_IMAGE_LOCK; gitleaks v8.19+ accepts the same git/dir commands.
+secret_scan_image=${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK:-${DEV_SCAN_GITLEAKS_IMAGE_LOCK:-}}
 case "${secret_scan_image}" in
 *@sha256:*) ;;
 *)
-	printf 'DEV_SCAN_GITLEAKS_IMAGE_LOCK must be pinned by digest\n' >&2
+	printf 'DEV_SCAN_BETTERLEAKS_IMAGE_LOCK must be pinned by digest\n' >&2
 	exit 1
 	;;
 esac
 
 printf '\n==> Run secret scan\n'
-# Prefer Git-aware scanning so removed-but-still-reachable secrets in history are caught.
-if [ -d .git ]; then
-	docker run --rm --user "${docker_uid}:${docker_gid}" \
-		--cap-drop=ALL \
-		--security-opt=no-new-privileges:true \
-		-e HOME="${docker_home}" \
-		-e XDG_CACHE_HOME="${docker_cache_home}" \
-		-v "${docker_home_source}:${docker_home}" \
-		-v "${docker_tmpdir}:/tmp" \
-		-v "$(pwd):/repo" \
-		-w /repo \
-		"${secret_scan_image}" \
-		detect --source /repo --no-banner --redact --exit-code 1
-else
-	# Fall back to plain filesystem scanning when Git metadata is unavailable.
-	docker run --rm --user "${docker_uid}:${docker_gid}" \
-		--cap-drop=ALL \
-		--security-opt=no-new-privileges:true \
-		-e HOME="${docker_home}" \
-		-e XDG_CACHE_HOME="${docker_cache_home}" \
-		-v "${docker_home_source}:${docker_home}" \
-		-v "${docker_tmpdir}:/tmp" \
-		-v "$(pwd):/repo" \
-		"${secret_scan_image}" \
-		detect --source /repo --no-git --no-banner --redact --exit-code 1
-fi
+# Prefer Git-aware scanning so removed-but-still-reachable secrets in history are
+# caught; fall back to a plain directory scan when Git metadata is unavailable.
+secret_scan_mode=dir
+[ -d .git ] && secret_scan_mode=git
+# The scanner only reads the checkout and never validates findings against live
+# APIs (no --validation), so it runs with no network and a read-only mount: a
+# compromised scanner image can neither exfiltrate nor rewrite repository files.
+docker run --rm --user "${docker_uid}:${docker_gid}" \
+	--cap-drop=ALL \
+	--security-opt=no-new-privileges:true \
+	--network=none \
+	-e HOME="${docker_home}" \
+	-e XDG_CACHE_HOME="${docker_cache_home}" \
+	-v "${docker_home_source}:${docker_home}" \
+	-v "${docker_tmpdir}:/tmp" \
+	-v "$(pwd):/repo:ro" \
+	-w /repo \
+	"${secret_scan_image}" \
+	"${secret_scan_mode}" /repo --no-banner --redact --exit-code 1
 
 printf '\n==> Run workflow lint\n'
 # Use actionlint in a container so CI and local runs use the same tool version.
