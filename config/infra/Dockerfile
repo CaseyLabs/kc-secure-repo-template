@@ -2,7 +2,7 @@
 # base image and nonroot runtime setup in one place.
 ARG DEBIAN_APT_SNAPSHOT
 
-FROM hashicorp/terraform:1.16.4@sha256:985cdc6c1d9b0a65b83377f666efd2f740b47f02ac55be1ced3d18f7d3b0e829 AS terraform-cli
+FROM hashicorp/terraform:1.16.5@sha256:c7926feace05d0f7e73542842bf3945924e955a1f782cf000ccbb8d18fa42d77 AS terraform-cli
 FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS dev-base
 
 ARG DEBIAN_APT_SNAPSHOT
