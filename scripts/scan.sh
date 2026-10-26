@@ -207,24 +207,36 @@ case "${trivy_scan_image}" in
 esac
 
 printf '\n==> Run misconfiguration scan\n'
-# Trivy complements the other scanners by checking Dockerfile posture issues.
+# Trivy complements the other scanners by checking Dockerfile and Terraform
+# posture issues. It runs offline from the checks bundled in the pinned image
+# (--skip-check-update), so a compromised or changed check feed cannot alter
+# results, and it mounts the checkout read-only because it only reads it.
+# On a cold cache (such as a fresh CI runner) Trivy logs "Falling back to
+# embedded checks" at ERROR level; that is expected and the scan still runs.
+# config/.trivyignore holds reviewed suppressions, each with its reason.
+# --skip-dirs drops providers and modules that terraform init downloads, which
+# are third-party code rather than this repository's configuration.
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
+	--network=none \
 	-e HOME="${docker_home}" \
 	-e XDG_CACHE_HOME="${docker_cache_home}" \
 	-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
 	-v "${docker_home_source}:${docker_home}" \
 	-v "${docker_tmpdir}:/tmp" \
-	-v "$(pwd):/workspace" \
+	-v "$(pwd):/workspace:ro" \
 	-w /workspace \
 	"${trivy_scan_image}" \
 	fs \
 	--scanners misconfig \
-	--misconfig-scanners dockerfile \
+	--misconfig-scanners dockerfile,terraform \
+	--skip-dirs /workspace/config/infra/.terraform \
+	--ignorefile /workspace/config/.trivyignore \
 	--severity HIGH,CRITICAL \
 	--exit-code 1 \
 	--skip-version-check \
+	--skip-check-update \
 	/workspace
 
 printf '\n==> Run Kubernetes manifest scan\n'
@@ -232,18 +244,21 @@ if [ -n "${k8s_render_file_scan_path}" ]; then
 	docker run --rm --user "${docker_uid}:${docker_gid}" \
 		--cap-drop=ALL \
 		--security-opt=no-new-privileges:true \
+		--network=none \
 		-e HOME="${docker_home}" \
 		-e XDG_CACHE_HOME="${docker_cache_home}" \
 		-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
 		-v "${docker_home_source}:${docker_home}" \
 		-v "${docker_tmpdir}:/tmp" \
-		-v "$(pwd):/workspace" \
+		-v "$(pwd):/workspace:ro" \
 		-w /workspace \
 		"${trivy_scan_image}" \
 		config \
+		--ignorefile /workspace/config/.trivyignore \
 		--severity HIGH,CRITICAL \
 		--exit-code 1 \
 		--skip-version-check \
+		--skip-check-update \
 		"${k8s_render_file_scan_path}"
 else
 	printf '%s\n' 'No rendered Kubernetes manifests available; skipping Trivy config scan'

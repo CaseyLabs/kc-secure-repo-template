@@ -547,6 +547,16 @@ EOF
 		printf '%s\n' "${secret_line}" | grep -Fq -- ':/repo:ro' || fail 'secret scan should mount the repository read-only'
 		printf '%s\n' "${secret_line}" | grep -Fq -- '--validation' && fail 'secret scan must not validate findings against live APIs'
 
+		# Trivy runs offline from its bundled checks, cannot write to the checkout,
+		# and covers the Terraform under config/infra as well as Dockerfiles.
+		trivy_line=$(grep -F -- "${DEV_SCAN_TRIVY_IMAGE_LOCK} fs " docker.log) || fail 'scan should run the digest-pinned Trivy filesystem scan'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--network=none' || fail 'Trivy should run without network access'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-check-update' || fail 'Trivy should use its bundled checks instead of downloading them'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- ':/workspace:ro' || fail 'Trivy should mount the repository read-only'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--misconfig-scanners dockerfile,terraform' || fail 'Trivy should scan Dockerfiles and Terraform'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-dirs /workspace/config/infra/.terraform' || fail 'Trivy should skip downloaded Terraform providers and modules'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--ignorefile /workspace/config/.trivyignore' || fail 'Trivy should read the reviewed ignore file'
+
 		# With Git metadata the scan covers history through the git subcommand.
 		git init -q .
 		git -c user.name=fixture -c user.email=fixture@example.invalid commit -q --allow-empty -m "[test] fixture: init"
