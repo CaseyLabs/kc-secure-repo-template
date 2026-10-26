@@ -202,6 +202,10 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
 - 2026-10-26 (M1): The dev image still builds from `DEV_GO_IMAGE_LOCK`. Choosing
   a toolchain stays with milestones 2 and 4.
 
+- 2026-10-26 (handoff, user decision): Branch milestone 2 from
+  `feat/workflow-configurable-commands` (M1, unmerged, commit d968a2b) rather than
+  `main`. Rebase it onto `main` once M1's PR merges.
+
 ## Outcomes & Retrospective
 
 - M1: `PROJECT_{BUILD,LINT,TEST,RUN}_COMMAND` shipped with a fake-docker
