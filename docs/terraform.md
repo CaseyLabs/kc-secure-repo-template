@@ -53,7 +53,9 @@ Misconfiguration scanning:
 
 Repository hardening defaults:
 
-- Dependabot security features stay enabled
+- Dependabot alerts stay enabled
+- Dependabot security updates default to off because Renovate opens
+  vulnerability-fix PRs from those alerts
 - default-branch rulesets stay enabled
 - linear history stays enabled
 - non-fast-forward protection stays enabled

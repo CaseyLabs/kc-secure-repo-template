@@ -1,11 +1,24 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Renovate opens every dependency update PR for this repository (Dependabot alerts stay on for detection only).",
+    "Routine updates are created on the first day of each month; vulnerability-fix PRs skip the schedule and cooldown."
+  ],
   "extends": [
     "config:recommended",
     ":disableDependencyDashboard"
   ],
+  "schedule": [
+    "* * 1 * *"
+  ],
   "enabledManagers": [
-    "custom.regex"
+    "custom.regex",
+    "github-actions",
+    "terraform",
+    "gomod"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
   ],
   "customManagers": [
     {
@@ -30,24 +43,77 @@
         "# renovate: datasource=(?<datasource>terraform-provider) depName=(?<depName>\\S+)(?: packageName=(?<packageName>\\S+))?(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?(?: registryUrl=(?<registryUrl>\\S+))?\\s+[A-Z0-9_]+\\s*=\\s*['\"](?<currentValue>[^'\"]+)['\"]"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Refresh image digests for tag-pinned locks in config/lockfile.cfg, such as a rebuilt debian:trixie-slim",
+      "managerFilePatterns": [
+        "/^config\\/lockfile\\.cfg$/"
+      ],
+      "matchStrings": [
+        "[A-Z0-9_]+_IMAGE_LOCK='(?<depName>[^:@'\\s]+):(?<currentValue>[^@'\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})'"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     }
   ],
-  "postUpgradeTasks": {
-    "commands": [
-      "sh scripts/update.sh config/project.cfg"
-    ],
-    "fileFilters": [
-      "config/project.cfg",
-      "config/lockfile.cfg",
-      "config/infra/Dockerfile",
-      "config/infra/versions.tf"
-    ],
-    "executionMode": "branch"
-  },
   "packageRules": [
     {
-      "matchManagers": ["custom.regex"],
+      "description": "Group config selector, lock digest, and Terraform provider updates so update.sh refreshes every lock in one PR",
+      "matchManagers": [
+        "custom.regex",
+        "terraform"
+      ],
       "groupName": "project tooling and images",
+      "minimumReleaseAge": "7 days",
+      "internalChecksFilter": "strict",
+      "postUpgradeTasks": {
+        "commands": [
+          "sh scripts/update.sh config/project.cfg --refresh-package-snapshot"
+        ],
+        "fileFilters": [
+          "config/project.cfg",
+          "config/lockfile.cfg",
+          "config/infra/Dockerfile",
+          "config/infra/versions.tf"
+        ],
+        "executionMode": "branch"
+      }
+    },
+    {
+      "description": "Tag and version changes come from config/project.cfg selectors; lockfile.cfg only receives digest refreshes",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchFileNames": [
+        "config/lockfile.cfg"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch",
+        "pin",
+        "pinDigest",
+        "rollback",
+        "bump",
+        "replacement"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Group SHA-pinned GitHub Actions updates and wait for the same cooldown as other dependencies",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github-actions",
+      "minimumReleaseAge": "7 days",
+      "internalChecksFilter": "strict"
+    },
+    {
+      "description": "Wait before adopting new Go module releases",
+      "matchManagers": [
+        "gomod"
+      ],
       "minimumReleaseAge": "7 days",
       "internalChecksFilter": "strict"
     }

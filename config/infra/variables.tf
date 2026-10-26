@@ -99,16 +99,20 @@ variable "delete_branch_on_merge" {
   default     = true
 }
 
+# Alerts stay on even though Renovate opens the fix PRs: Renovate reads these
+# alerts to raise vulnerability-fix PRs outside its routine schedule.
 variable "enable_vulnerability_alerts" {
   description = "Enable Dependabot vulnerability alerts."
   type        = bool
   default     = true
 }
 
+# Off by default because self-hosted Renovate opens vulnerability-fix PRs from
+# the alerts above; enabling both would open duplicate PRs for the same fix.
 variable "enable_dependabot_security_updates" {
-  description = "Enable Dependabot security updates."
+  description = "Enable Dependabot security updates (Renovate opens vulnerability-fix PRs by default)."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "enable_secret_scanning" {
