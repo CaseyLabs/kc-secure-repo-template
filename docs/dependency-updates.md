@@ -55,6 +55,18 @@ PR titles and commit subjects follow `docs/gitops-conventions.md`:
   (`minimumReleaseAge`). This timing defense helps avoid immediately adopting a
   newly published action, image, or module before yanks, malicious releases, or
   incident reports have time to surface.
+- Routine PRs open only after every update in them clears the cooldown
+  (`"prCreation": "not-pending"`).
+  - `"internalChecksFilter": "strict"` falls back to an older release that is
+    old enough, but a digest-only refresh (such as a rebuilt
+    `debian:trixie-slim`) has no older version to fall back to.
+  - Without `not-pending`, such a PR would open with a pending
+    `renovate/stability-days` check and sit until the digest is 7 days old.
+  - A grouped PR waits for its youngest update.
+  - Held updates already have a `renovate/` branch and appear in the Renovate
+    workflow logs. The Dependency Dashboard issue is disabled
+    (`:disableDependencyDashboard`) to keep derived repositories quiet; remove
+    that preset to list held updates in one issue.
 - Vulnerability-fix PRs from Dependabot alerts skip both the schedule and the
   cooldown, so they open on the next daily run.
 
