@@ -44,7 +44,8 @@ Release-scan defaults:
 Misconfiguration scanning:
 
 - `make scan` runs Trivy against `config/infra` with the Terraform checks
-  enabled, skipping the downloaded `config/infra/.terraform` providers
+  enabled, skipping the downloaded `config/infra/.terraform` providers and
+  any downloaded modules (`--tf-exclude-downloaded-modules`)
 - `config/.trivyignore` suppresses `GIT-0001` (repository is public) because
   this template's own repository is public on purpose
 - a derived private repository should set `repository_visibility = "private"`

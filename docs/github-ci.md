@@ -70,7 +70,8 @@ container-first, pinned, scanned, and reviewable.
 - Workflow definitions get security-audited:
   - `actionlint` checks syntax and expression mistakes.
   - `zizmor` checks GitHub Actions security footguns.
-  - repo policy checks enforce template-specific hard fails.
+  - repo policy checks enforce template-specific hard fails, including a
+    ban on inline zizmor ignores.
 - Commit history stays human-attributed:
   - `make scan` rejects AI attribution in the pushed or pull request commit
     range; the scan workflow passes the range through `env`, not `run`.
@@ -111,9 +112,12 @@ container-first, pinned, scanned, and reviewable.
 - Keep privileged PR metadata automation separate:
   - prefer `workflow_run` handoff patterns when needed
   - treat artifacts from PR code as untrusted
-  - add a reviewed zizmor ignore (`.github/zizmor.yml` or an inline
-    `# zizmor: ignore[dangerous-triggers]` comment) before committing
-    `workflow_run`
+  - `workflow_run` needs a reviewed scanner exception first:
+    - zizmor runs with `--no-config`, and `make scan` rejects inline
+      `# zizmor: ignore[...]` comments, so a workflow change cannot
+      silence its own audit
+    - record the exception in `scripts/workflow-policy.sh` instead, such
+      as a reviewed `config/` file passed with zizmor `--config`
 
 ## Change Detection
 

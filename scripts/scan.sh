@@ -136,11 +136,19 @@ fi
 # Secret scanning is security-sensitive, so require a digest-pinned scanner image.
 # Derived repositories that have not renamed their lock yet keep scanning with
 # DEV_SCAN_GITLEAKS_IMAGE_LOCK; gitleaks v8.19+ accepts the same git/dir commands.
-secret_scan_image=${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK:-${DEV_SCAN_GITLEAKS_IMAGE_LOCK:-}}
+# The lock name is kept with the image so a pin error names the variable the
+# user actually set.
+if [ -n "${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK:-}" ] || [ -z "${DEV_SCAN_GITLEAKS_IMAGE_LOCK:-}" ]; then
+	secret_scan_lock_name=DEV_SCAN_BETTERLEAKS_IMAGE_LOCK
+	secret_scan_image=${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK:-}
+else
+	secret_scan_lock_name=DEV_SCAN_GITLEAKS_IMAGE_LOCK
+	secret_scan_image=${DEV_SCAN_GITLEAKS_IMAGE_LOCK}
+fi
 case "${secret_scan_image}" in
 *@sha256:*) ;;
 *)
-	printf 'DEV_SCAN_BETTERLEAKS_IMAGE_LOCK must be pinned by digest\n' >&2
+	printf '%s must be pinned by digest\n' "${secret_scan_lock_name}" >&2
 	exit 1
 	;;
 esac
@@ -219,7 +227,10 @@ printf '\n==> Run misconfiguration scan\n'
 # embedded checks" at ERROR level; that is expected and the scan still runs.
 # config/.trivyignore holds reviewed suppressions, each with its reason.
 # --skip-dirs drops providers and modules that terraform init downloads, which
-# are third-party code rather than this repository's configuration.
+# are third-party code rather than this repository's configuration, plus the
+# gitignored .cache and .tmp trees so local runs match a fresh CI checkout.
+# --tf-exclude-downloaded-modules also covers modules the evaluator loads
+# through .terraform/modules/modules.json, including other Terraform roots.
 docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--cap-drop=ALL \
 	--security-opt=no-new-privileges:true \
@@ -236,6 +247,9 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--scanners misconfig \
 	--misconfig-scanners dockerfile,terraform \
 	--skip-dirs /workspace/config/infra/.terraform \
+	--skip-dirs /workspace/.cache \
+	--skip-dirs /workspace/.tmp \
+	--tf-exclude-downloaded-modules \
 	--ignorefile /workspace/config/.trivyignore \
 	--severity HIGH,CRITICAL \
 	--exit-code 1 \
@@ -271,10 +285,11 @@ fi
 printf '\n==> Check workflow pins\n'
 # Finally, apply the template-only workflow rules that zizmor does not cover:
 # release tag comments on pinned actions, a top-level permissions block in
-# every workflow, and the issue_comment trigger ban.
+# every workflow, the issue_comment trigger ban, and no inline zizmor ignores.
 check_workflow_action_pins
 check_workflow_permissions_policy
 check_workflow_trigger_policy
+check_workflow_scanner_suppressions
 
 printf '\n==> Check Claude settings\n'
 # Keep the shared Claude deny rules in place. The settings check parses JSON with jq, which the dev image provides; running

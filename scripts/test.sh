@@ -350,6 +350,20 @@ jobs:
           echo "${{ github.event.pull_request.title }}"
           echo "${{ github.head_ref }}"
 EOF
+	# zizmor only reports missing permissions per job, so a workflow with
+	# job-level permissions but no top-level block passes it. The stricter
+	# top-level rule stays in check_workflow_permissions_policy; this case
+	# pins zizmor's overlapping coverage.
+	assert_zizmor_rejects 'missing permissions' 'excessive-permissions' <<'EOF'
+name: unsafe
+on:
+  pull_request:
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
 }
 
 test_workflow_issue_comment_is_rejected() {
@@ -380,6 +394,35 @@ EOF
 			fail 'workflow trigger policy should reject issue_comment'
 		fi
 		grep -q 'issue_comment is not allowed' ${TMPDIR}/template-workflow-trigger-policy.txt || fail 'workflow trigger policy should report issue_comment'
+	)
+	rm -rf "${workdir}"
+}
+
+# zizmor honors inline "# zizmor: ignore[...]" comments and has no flag to turn
+# them off, so the workflow policy rejects them to keep its audits unbypassable.
+# The check only reads workflow and action files, so a minimal fixture is enough.
+test_workflow_zizmor_ignore_is_rejected() {
+	workdir=$(mktemp -d)
+
+	(
+		cd "${workdir}"
+		mkdir -p .github/workflows
+		cat >.github/workflows/unsafe.yml <<'EOF'
+name: unsafe
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+permissions:
+  contents: read
+jobs:
+  unsafe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unsafe
+EOF
+		if check_workflow_scanner_suppressions >${TMPDIR}/template-workflow-suppressions.txt 2>&1; then
+			fail 'workflow policy should reject inline zizmor ignores'
+		fi
+		grep -q 'inline zizmor ignore is not allowed' ${TMPDIR}/template-workflow-suppressions.txt || fail 'workflow policy should report inline zizmor ignores'
 	)
 	rm -rf "${workdir}"
 }
@@ -556,6 +599,15 @@ EOF
 		printf '%s\n' "${trivy_line}" | grep -Fq -- '--misconfig-scanners dockerfile,terraform' || fail 'Trivy should scan Dockerfiles and Terraform'
 		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-dirs /workspace/config/infra/.terraform' || fail 'Trivy should skip downloaded Terraform providers and modules'
 		printf '%s\n' "${trivy_line}" | grep -Fq -- '--ignorefile /workspace/config/.trivyignore' || fail 'Trivy should read the reviewed ignore file'
+		# Gitignored caches and scratch copies are not repository content.
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-dirs /workspace/.cache' || fail 'Trivy should skip the local Docker cache'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--skip-dirs /workspace/.tmp' || fail 'Trivy should skip local scratch files'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--tf-exclude-downloaded-modules' || fail 'Trivy should exclude downloaded Terraform modules'
+
+		# A checked-in .github/zizmor.yml must not be able to disable the audits
+		# that replaced the old awk workflow checks.
+		zizmor_line=$(grep -F -- "${DEV_SCAN_ZIZMOR_IMAGE_LOCK}" docker.log) || fail 'scan should run the digest-pinned zizmor image'
+		printf '%s\n' "${zizmor_line}" | grep -Fq -- '--no-config' || fail 'zizmor should ignore repository config files'
 
 		# actionlint keeps its bundled shellcheck enabled for workflow run: blocks.
 		actionlint_line=$(grep -F -- "${DEV_SCAN_ACTIONLINT_IMAGE_LOCK}" docker.log) || fail 'scan should run the digest-pinned actionlint image'
@@ -579,6 +631,14 @@ EOF
 		: >docker.log
 		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args-legacy.txt
 		grep -Fq -- "${legacy_image} git /repo" docker.log || fail 'scan should fall back to the legacy DEV_SCAN_GITLEAKS_IMAGE_LOCK'
+
+		# An unpinned legacy lock is reported under the variable that is set.
+		sed -e "s#^DEV_SCAN_GITLEAKS_IMAGE_LOCK=.*#DEV_SCAN_GITLEAKS_IMAGE_LOCK='ghcr.io/example/legacy-secret-scanner:v1'#" config/lockfile.cfg >config/lockfile.cfg.new
+		mv config/lockfile.cfg.new config/lockfile.cfg
+		if PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args-legacy-unpinned.txt 2>&1; then
+			fail 'scan should reject an unpinned legacy secret scanner lock'
+		fi
+		grep -Fq 'DEV_SCAN_GITLEAKS_IMAGE_LOCK must be pinned by digest' ${TMPDIR}/template-scan-args-legacy-unpinned.txt || fail 'unpinned legacy lock error should name DEV_SCAN_GITLEAKS_IMAGE_LOCK'
 	)
 	rm -rf "${workdir}"
 }
@@ -1324,6 +1384,7 @@ template | smoke | _regression)
 		. ./config/lockfile.cfg
 		test_workflow_issue_comment_is_rejected
 		test_workflow_missing_permissions_is_rejected
+		test_workflow_zizmor_ignore_is_rejected
 		test_ci_change_detection_rules
 		test_ci_change_detection_output_contract
 		test_ci_change_detection_git_history

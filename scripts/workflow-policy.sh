@@ -45,6 +45,8 @@ check_workflow_action_pins() {
 
 # Require every workflow to opt into only the token scopes it needs. This avoids
 # old repository defaults silently granting write-scoped GITHUB_TOKEN access.
+# Kept alongside zizmor: its excessive-permissions audit accepts a workflow
+# whose jobs each set permissions without a top-level block.
 check_workflow_permissions_policy() {
 	for workflow in .github/workflows/*.yml; do
 		if ! grep -Eq '^permissions:[[:space:]]*($|[{])' "${workflow}"; then
@@ -81,6 +83,8 @@ check_workflow_trigger_policy() {
 # (template-injection), and missing token scopes (excessive-permissions).
 # --offline keeps results deterministic, so the scanner also gets no network,
 # and the checkout is mounted read-only because zizmor only reads it.
+# --no-config stops a checked-in zizmor.yml from disabling audits; inline
+# ignore comments are rejected separately by check_workflow_scanner_suppressions.
 # Usage: run_workflow_security_scan <digest-pinned image> <directory>
 run_workflow_security_scan() {
 	docker run --rm --user "${docker_uid:-$(id -u)}:${docker_gid:-$(id -g)}" \
@@ -95,5 +99,21 @@ run_workflow_security_scan() {
 		--strict-collection \
 		--collect=workflows,actions \
 		--persona=regular \
+		--no-config \
 		.
+}
+
+# zizmor honors inline "# zizmor: ignore[audit]" comments and has no flag to turn
+# them off, so a pull request could silence the audits above from inside the file
+# it changes. Reject them in workflows and local actions; a derived repository
+# that needs a reviewed suppression should record it in run_workflow_security_scan
+# instead (see docs/github-ci.md).
+check_workflow_scanner_suppressions() {
+	hits=$(find . \( -path ./.git -o -path ./.cache -o -path ./.tmp -o -path ./dist \) -prune -o \
+		-type f \( -path './.github/workflows/*.yml' -o -path './.github/workflows/*.yaml' -o -name action.yml -o -name action.yaml \) \
+		-exec grep -Hn 'zizmor:[[:space:]]*ignore' {} +) || true
+	[ -z "${hits}" ] && return 0
+	printf '%s\n' "${hits}" >&2
+	printf 'inline zizmor ignore is not allowed in template workflows\n' >&2
+	return 1
 }
