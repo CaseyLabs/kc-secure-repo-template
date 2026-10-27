@@ -49,15 +49,10 @@ mkdir -p "${docker_home_source}" "${docker_tmpdir}"
 # Opt-in distroless runtime image. It does not depend on the dev image, so it is
 # built first: the lock checks then fail fast, before the slower dev build.
 # Both locks must be digest-pinned, so the build never falls back to a mutable tag.
-require_pinned_lock() {
-	if ! printf '%s\n' "$2" | grep -Eq '^[^@]+@sha256:[a-f0-9]{64}$'; then
-		printf '%s must be pinned by digest to build PROJECT_RUNTIME_IMAGE; run make update\n' "$1" >&2
-		exit 1
-	fi
-}
+. ./scripts/workflow-policy.sh
 if [ -n "${project_runtime_image}" ]; then
-	require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}"
-	require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}"
+	require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}" "build PROJECT_RUNTIME_IMAGE"
+	require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}" "build PROJECT_RUNTIME_IMAGE"
 	printf '\n==> Build runtime image\n'
 	# Plain `docker build` (no Buildx cache) keeps this path simple; the stage is small.
 	docker build \

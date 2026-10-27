@@ -1,6 +1,20 @@
 #!/bin/sh
 # Shared workflow checks used by make scan and behavioral regression tests.
 
+# True when an image reference is pinned by a full sha256 digest. build.sh,
+# scan.sh, and the runtime image policy share this one pattern.
+is_digest_pinned() {
+	printf '%s\n' "$1" | grep -Eq '^[^@]+@sha256:[a-f0-9]{64}$'
+}
+
+# Exit unless lock $1 (holding value $2) is digest-pinned; $3 says what needs it.
+require_pinned_lock() {
+	is_digest_pinned "$2" || {
+		printf '%s must be pinned by digest to %s; run make update\n' "$1" "$3" >&2
+		exit 1
+	}
+}
+
 # Read every external GitHub Action reference from workflow files.
 list_workflow_entries() {
 	for workflow in .github/workflows/*.yml; do
@@ -151,7 +165,7 @@ check_runtime_image_policy() {
 	esac
 
 	runtime_lock=$(sed -n "s/^DEV_DISTROLESS_STATIC_IMAGE_LOCK='\(.*\)'\$/\1/p" "${runtime_lockfile}")
-	if [ -n "${runtime_lock}" ] && ! printf '%s\n' "${runtime_lock}" | grep -Eq '^[^@]+@sha256:[a-f0-9]{64}$'; then
+	if [ -n "${runtime_lock}" ] && ! is_digest_pinned "${runtime_lock}"; then
 		printf 'DEV_DISTROLESS_STATIC_IMAGE_LOCK must be pinned by digest in %s\n' "${runtime_lockfile}" >&2
 		return 1
 	fi

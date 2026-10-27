@@ -124,3 +124,17 @@ workflow runs a different implementation.
   blank selector), a non-root `USER`, and an exec-form `ENTRYPOINT`. Deleting
   the stage skips the check.
 - Try it: `docker run --rm my-app-runtime:local`.
+
+## Optional Image Vulnerability Scan
+
+- Off by default (`PROJECT_SCAN_IMAGE_VULNS=false`); with it off, `make scan` is unchanged.
+- Set `PROJECT_SCAN_IMAGE_VULNS=true` and `make scan` also:
+  - builds `PROJECT_SCAN_IMAGE_TARGET` (default `runtime`) through the same build-arg path as the dev image
+  - saves it to a temporary tarball and runs the pinned Trivy image on it
+  - fails on HIGH or CRITICAL findings (`--exit-code 1 --severity HIGH,CRITICAL`)
+  - deletes the tarball and the scan image whether the scan passes or fails
+- The runtime target needs digest-pinned `DEV_GO_IMAGE_LOCK` and `DEV_DISTROLESS_STATIC_IMAGE_LOCK`.
+- Unlike the other scanners, this one needs network access for Trivy's vulnerability database, so Trivy gets only the read-only tarball.
+- Values other than `true` or `false` fail the scan.
+- Keep the target on a shipped-image stage; the dev image carries toolchains on purpose.
+- `make dist` does not record this scan in its release evidence yet.

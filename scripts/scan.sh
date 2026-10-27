@@ -22,6 +22,24 @@ esac
 project_image=${PROJECT_IMAGE:-kc-secure-template-dev:local}
 project_dockerfile=${PROJECT_DOCKERFILE:-Dockerfile}
 project_build_target=${PROJECT_BUILD_TARGET:-dev}
+# Opt-in vulnerability scan of a built image (off unless set to true). The target
+# defaults to the distroless runtime stage; the dev image carries toolchains on
+# purpose, so it is not a sensible target.
+scan_image_vulns=${PROJECT_SCAN_IMAGE_VULNS-false}
+# Reject anything but true/false so a typo such as TRUE or 1 cannot silently
+# leave this security check off.
+case "${scan_image_vulns}" in
+true | false) ;;
+*)
+	printf 'PROJECT_SCAN_IMAGE_VULNS must be true or false, not %s\n' "${scan_image_vulns}" >&2
+	exit 1
+	;;
+esac
+scan_image_target=${PROJECT_SCAN_IMAGE_TARGET:-runtime}
+# A per-project tag keeps two checkouts on one Docker host from scanning each
+# other's image; cleanup removes it again.
+scan_image_tag="${PROJECT_NAME:-kc-secure-template}-vuln-scan:local"
+scan_image_built=false
 
 # Match the container runtime user to the host user for bind-mounted files.
 docker_uid=${DOCKER_UID:-$(id -u)}
@@ -34,8 +52,12 @@ mkdir -p "${docker_home_source}" "${docker_tmpdir}"
 k8s_stage_dir=''
 k8s_metadata_file=''
 k8s_log=''
+scan_image_tar=''
 
 cleanup() {
+	# The saved image tarball can be large; remove it whether the scan passed or failed.
+	[ -z "${scan_image_tar}" ] || rm -f "${scan_image_tar}"
+	[ "${scan_image_built}" = false ] || docker image rm "${scan_image_tag}" >/dev/null
 	[ -z "${k8s_log}" ] || rm -f "${k8s_log}"
 	if [ -n "${k8s_stage_dir}" ]; then
 		rm -rf "${k8s_stage_dir}"
@@ -64,28 +86,28 @@ printf '\n==> Check commit attribution policy\n'
 # CI), because the local commit-msg hook is opt-in and can be skipped.
 check_commit_attribution_policy
 
-printf '\n==> Build project image\n'
-# GitHub Actions can opt into Buildx cache export/import without changing local defaults.
-if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
+# Build one Dockerfile target with the pinned build args. The project image and
+# the opt-in vulnerability-scan image share this path so the args never drift.
+# $1 is the target, $2 the image tag, and $3 optional extra build args (word-split
+# on purpose, so keep them free of spaces).
+build_scan_target() {
+	# GitHub Actions can opt into Buildx cache export/import without changing local defaults.
+	build_command=build
+	[ -z "${DOCKER_BUILD_EXTRA_ARGS:-}" ] || build_command="buildx build --load ${DOCKER_BUILD_EXTRA_ARGS}"
 	# shellcheck disable=SC2086
-	docker buildx build --load \
-		${DOCKER_BUILD_EXTRA_ARGS} \
+	docker ${build_command} \
 		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-		--target "${project_build_target}" \
+		${3:-} \
+		--target "$1" \
 		-f "${project_dockerfile}" \
-		-t "${project_image}" .
-else
-	# Build the main dev image before running syntax and template checks inside it.
-	docker build \
-		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
-		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-		--target "${project_build_target}" \
-		-f "${project_dockerfile}" \
-		-t "${project_image}" .
-fi
+		-t "$2" .
+}
+
+printf '\n==> Build project image\n'
+# Build the main dev image before running syntax and template checks inside it.
+build_scan_target "${project_build_target}" "${project_image}"
 
 printf '\n==> Check shell syntax\n'
 # Syntax-check scripts inside the container; scanning does not generate release files.
@@ -256,6 +278,44 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	--skip-version-check \
 	--skip-check-update \
 	/workspace
+
+# Off by default and silent when off, so the default scan output is unchanged.
+if [ "${scan_image_vulns}" = true ]; then
+	printf '\n==> Run image vulnerability scan\n'
+	scan_image_build_args=''
+	if [ "${scan_image_target}" = runtime ]; then
+		# The runtime stage has no mutable fallback in a scan: both locks must be
+		# digest-pinned, with the same shared check build.sh applies.
+		require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}" "scan the runtime image"
+		require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}" "scan the runtime image"
+		scan_image_build_args="--build-arg RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK} --build-arg RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}"
+	fi
+	scan_image_built=true
+	build_scan_target "${scan_image_target}" "${scan_image_tag}" "${scan_image_build_args}"
+	scan_image_tar=$(mktemp "${docker_tmpdir}/scan-image.XXXXXX")
+	docker save -o "${scan_image_tar}" "${scan_image_tag}"
+	# Unlike the other scanners, Trivy needs network access here to fetch its
+	# vulnerability database. So it gets only the tarball and the reviewed ignore
+	# file, read-only, plus its own cache in the Docker home, not the shared temp
+	# directory.
+	docker run --rm --user "${docker_uid}:${docker_gid}" \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges:true \
+		-e HOME="${docker_home}" \
+		-e XDG_CACHE_HOME="${docker_cache_home}" \
+		-e TRIVY_CACHE_DIR="${docker_cache_home}/trivy" \
+		-v "${docker_home_source}:${docker_home}" \
+		-v "${scan_image_tar}:/scan/image.tar:ro" \
+		-v "$(pwd)/config/.trivyignore:/scan/.trivyignore:ro" \
+		"${trivy_scan_image}" \
+		image \
+		--input /scan/image.tar \
+		--ignorefile /scan/.trivyignore \
+		--scanners vuln \
+		--severity HIGH,CRITICAL \
+		--exit-code 1 \
+		--skip-version-check
+fi
 
 printf '\n==> Run Kubernetes manifest scan\n'
 if [ -n "${k8s_render_file_scan_path}" ]; then
