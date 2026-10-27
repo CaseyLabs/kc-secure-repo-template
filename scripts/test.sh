@@ -575,6 +575,69 @@ EOF
 	rm -rf "${workdir}"
 }
 
+# The opt-in image vulnerability scan stays off by default, and when on it builds
+# the target, scans a saved tarball with Trivy, and always removes the tarball.
+test_scan_image_vulns() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		rm -rf config/k8s
+		mkdir -p fake-bin scan-tmp
+		# `docker save -o FILE` creates the file; a Trivy `image` run fails when asked to.
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+if [ "$1" = save ]; then
+	: >"$3"
+fi
+case " $* " in
+*' image --input '*) [ -z "${FAKE_TRIVY_IMAGE_FAIL:-}" ] || exit 1 ;;
+esac
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		sed -e "/^DEV_K8S_HELM_IMAGE=/d" config/project.cfg >config/project.cfg.test
+		. ./config/lockfile.cfg
+
+		# On (off-by-default is covered by test_scan_scanner_arguments): the runtime
+		# target is built with the pinned locks and scanned by Trivy.
+		printf '%s\n' 'PROJECT_SCAN_IMAGE_VULNS=true' >>config/project.cfg.test
+		PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-image-on.txt
+		grep -F -- '--target runtime' docker.log | grep -Fq -- "RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" || fail 'scan should build the runtime target with the pinned distroless lock'
+		trivy_line=$(grep -F -- ' image --input ' docker.log) || fail 'scan should run Trivy against the saved image tarball'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- "${DEV_SCAN_TRIVY_IMAGE_LOCK}" || fail 'image scan should use the digest-pinned Trivy image'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--exit-code 1' || fail 'image scan should fail on findings'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--severity HIGH,CRITICAL' || fail 'image scan should gate on HIGH and CRITICAL findings'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- ':/scan/image.tar:ro' || fail 'image scan should mount only the tarball, read-only'
+		printf '%s\n' "${trivy_line}" | grep -Fq -- '--ignorefile /scan/.trivyignore' || fail 'image scan should read the reviewed ignore file'
+		grep -Fq 'image rm kc-secure-template-vuln-scan:local' docker.log || fail 'scan should remove the scan image afterwards'
+		[ -z "$(find scan-tmp -name 'scan-image.*')" ] || fail 'scan should delete the image tarball after a passing scan'
+
+		# Trivy failing fails the scan and still deletes the tarball.
+		rm -f docker.log
+		if PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" FAKE_TRIVY_IMAGE_FAIL=1 sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-image-fail.txt 2>&1; then
+			fail 'scan should fail when the image vulnerability scan fails'
+		fi
+		# The failure must come from Trivy itself, after the tarball was saved.
+		grep -Fq 'save -o ' docker.log || fail 'failing scan should have saved the image tarball'
+		tail -n 2 docker.log | grep -Fq ' image --input ' || fail 'failing scan should stop at the Trivy image scan'
+		[ -z "$(find scan-tmp -name 'scan-image.*')" ] || fail 'scan should delete the image tarball after a failing scan'
+		# Unknown toggle values are rejected instead of silently skipping the scan.
+		printf '%s\n' 'PROJECT_SCAN_IMAGE_VULNS=TRUE' >>config/project.cfg.test
+		if PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-image-bad.txt 2>&1; then
+			fail 'scan should reject a PROJECT_SCAN_IMAGE_VULNS value other than true or false'
+		fi
+		grep -Fq 'PROJECT_SCAN_IMAGE_VULNS must be true or false' ${TMPDIR}/template-scan-image-bad.txt || fail 'scan should name the invalid toggle'
+	)
+	rm -rf "${workdir}"
+}
+
 test_optional_k8s_scan_skip() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -640,6 +703,10 @@ EOF
 		printf '%s\n' "${secret_line}" | grep -Fq -- '--network=none' || fail 'secret scan should run without network access'
 		printf '%s\n' "${secret_line}" | grep -Fq -- ':/repo:ro' || fail 'secret scan should mount the repository read-only'
 		printf '%s\n' "${secret_line}" | grep -Fq -- '--validation' && fail 'secret scan must not validate findings against live APIs'
+		# The opt-in image vulnerability scan is off by default and silent when off.
+		! grep -Fq 'save ' docker.log || fail 'scan should not save an image when the vulnerability scan is off'
+		! grep -Fq ' image --input ' docker.log || fail 'scan should not run the image vulnerability scan by default'
+		! grep -Fq 'image vulnerability scan' ${TMPDIR}/template-scan-args.txt || fail 'scan output should be unchanged when the image vulnerability scan is off'
 
 		# Trivy runs offline from its bundled checks, cannot write to the checkout,
 		# and covers the Terraform under config/infra as well as Dockerfiles.
@@ -1724,6 +1791,7 @@ template | smoke | _regression)
 		test_runtime_image_policy
 		test_optional_k8s_scan_skip
 		test_scan_scanner_arguments
+		test_scan_image_vulns
 		test_dist_scanner_arguments
 		test_workflow_command_overrides
 		test_k8s_shell_inputs_are_not_executed

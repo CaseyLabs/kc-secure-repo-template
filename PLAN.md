@@ -1,6 +1,6 @@
 # Language-Neutral Workflow and Runtime Image Plan
 
-Status: milestones 1–2 done (unmerged branches). Replaces `feat/dockerfile-templates` (02459d7), which is
+Status: milestones 1–3 done (unmerged branches). Replaces `feat/dockerfile-templates` (02459d7), which is
 31 commits behind `main`, conflicts in 5 files, and has design bugs (see the
 review notes at the end).
 
@@ -179,8 +179,14 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
 - [x] 1. Configurable workflow commands (2026-10-26; `test_workflow_command_overrides`; template test, `make test`, `make scan` passed)
 - [x] 2. Optional Go runtime image (2026-10-26; `test_update_gcr_digest`, `test_runtime_image_build`, `test_runtime_image_policy`, real runtime build in template mode; template test, `make test`, `make scan` passed)
 - [ ] Follow-up: lock formats differ by registry (ghcr.io drops the tag, gcr.io and Docker Hub keep it); unify in `resolve_image` as a separate change
-- [ ] Follow-up: `make scan` could check every non-empty `*_LOCK` is digest-pinned and share one pin helper with `scan.sh`/`dist.sh`/`build.sh`
-- [ ] 3. Opt-in runtime image vulnerability scan
+- [ ] Follow-up: `make scan` could check every non-empty `*_LOCK` is digest-pinned; `is_digest_pinned`/`require_pinned_lock` now live in `workflow-policy.sh` (used by `build.sh`, `scan.sh`), `dist.sh` still has its own check
+- [x] 3. Opt-in runtime image vulnerability scan (2026-10-26; `test_scan_image_vulns` plus off-mode asserts in `test_scan_scanner_arguments`; template test, `make test`, `make scan` passed; real opt-in scan ran and failed on 14 HIGH findings as designed)
+- [ ] Follow-up: record the image vulnerability scan in `make dist` release evidence (not trivial; see `release-integrity`)
+- [ ] Follow-up: bump `DEV_GO_IMAGE` past 1.26.3 (Renovate) so the opt-in image scan passes on the example binary
+- [ ] Follow-up: `check_runtime_image_policy` does not check the `runtime-build` stage `FROM ${RUNTIME_BUILD_IMAGE}`
+- [ ] Follow-up: share the runtime build args (`RUNTIME_BUILD_IMAGE`/`RUNTIME_BASE_IMAGE`) between `build.sh` and `scan.sh`, and a `run_trivy` helper for the three hardened Trivy runs
+- [ ] Follow-up: `build.sh` hardcodes `-f Dockerfile` while `scan.sh` uses `PROJECT_DOCKERFILE` (pre-existing)
+- [ ] Follow-up: `scan.sh` signal traps run cleanup but do not exit (pre-existing)
 - [ ] 4. Python and Node.js adaptation guidance
 - [ ] 5. Retire the old branch
 
@@ -197,6 +203,10 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   build the runtime image without them.
 - 2026-10-26 (M2): A plain `docker build .` builds the last stage, so the
   runtime stages sit above `dev` to keep the default image unchanged.
+
+- 2026-10-26 (M3): A real opt-in scan of the default runtime image fails: Trivy
+  reports 14 HIGH Go stdlib CVEs in the example binary built with golang 1.26.3
+  (fixed in 1.26.9). The gate works as designed; the Go image needs a bump.
 
 ## Decision Log
 
@@ -234,6 +244,15 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   `feat/runtime-go-image` (M2, unmerged, commit 8a26aed), stacked on M1. Rebase
   the stack onto `main` as the M1 and M2 PRs merge.
 
+- 2026-10-26 (M3 design): `scan.sh` factors the dev build into `build_scan_target` (target, tag, extra args) and reuses it for the image scan, which saves a tarball to `DOCKER_TMPDIR`, removed by the `cleanup` trap. The image scan keeps network access (Trivy needs its vulnerability DB). Left `make dist` evidence out (not trivial).
+- 2026-10-26 (M3 review): Off mode prints nothing, so default `make scan` output
+  is unchanged. The toggle rejects values other than `true`/`false`. Trivy gets
+  only the tarball and `config/.trivyignore`, read-only, because it needs network
+  for its DB. The scan image uses a `${PROJECT_NAME}-vuln-scan:local` tag that
+  cleanup removes. Severity stays fixed at HIGH,CRITICAL (not unified with
+  `GRYPE_FAIL_ON`); a shared boolean validator and test-fixture helper declined
+  as out of scope.
+
 ## Outcomes & Retrospective
 
 - M1: `PROJECT_{BUILD,LINT,TEST,RUN}_COMMAND` shipped with a fake-docker
@@ -248,3 +267,10 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   scan failure, default-target change, unchecked Go lock, no real runtime build
   in CI, case and whitespace gaps, late lock check, misplaced comment); declined
   the mutable fallback tags (BuildKit needs them).
+- M3: Opt-in `PROJECT_SCAN_IMAGE_VULNS` builds `PROJECT_SCAN_IMAGE_TARGET`
+  (default `runtime`) through one shared `build_scan_target`, scans a saved
+  tarball with pinned Trivy, and always removes the tarball and image. Fixed six
+  `/code-review` findings (silent toggle typo, loose digest check, over-broad
+  writable mount, weak failure test, shared tag, noisy off output) and applied
+  four `/simplify` cleanups (one docker call, shared pin helper, ignore file,
+  merged off-mode test); deferred five pre-existing or out-of-scope items.
