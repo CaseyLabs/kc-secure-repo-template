@@ -55,9 +55,18 @@ k8s_log=''
 scan_image_tar=''
 
 cleanup() {
+	# Ignore repeat signals so a second Ctrl-C cannot cut cleanup short.
+	trap '' HUP INT TERM
 	# The saved image tarball can be large; remove it whether the scan passed or failed.
 	[ -z "${scan_image_tar}" ] || rm -f "${scan_image_tar}"
-	[ "${scan_image_built}" = false ] || docker image rm "${scan_image_tag}" >/dev/null
+	# Report a failed removal but keep going: the image may never have been built
+	# (a failed build sets scan_image_built first), and under `set -e` an
+	# unguarded failure here would end cleanup early, leaving the k8s temp files
+	# below, and replace the scan's own exit status.
+	if [ "${scan_image_built}" = true ]; then
+		docker image rm "${scan_image_tag}" >/dev/null ||
+			printf 'warning: could not remove scan image %s\n' "${scan_image_tag}" >&2
+	fi
 	[ -z "${k8s_log}" ] || rm -f "${k8s_log}"
 	if [ -n "${k8s_stage_dir}" ]; then
 		rm -rf "${k8s_stage_dir}"
@@ -66,7 +75,13 @@ cleanup() {
 		rm -f "${k8s_metadata_file}"
 	fi
 }
-trap cleanup EXIT INT TERM HUP
+# EXIT covers normal and `set -e` exits. Each signal exits non-zero (128 plus the
+# signal number, as shells report it), and that exit runs the EXIT trap, so an
+# interrupted scan cleans up once and then stops instead of carrying on.
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 . ./scripts/workflow-policy.sh
 . ./scripts/commit-policy.sh
@@ -283,14 +298,17 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 # Off by default and silent when off, so the default scan output is unchanged.
 if [ "${scan_image_vulns}" = true ]; then
 	printf '\n==> Run image vulnerability scan\n'
-	scan_image_build_args=''
-	if [ "${scan_image_target}" = runtime ]; then
-		# The runtime stage has no mutable fallback in a scan: both locks must be
-		# digest-pinned, with the same shared check build.sh applies.
-		require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}" "scan the runtime image"
-		require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}" "scan the runtime image"
-		scan_image_build_args="--build-arg RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK} --build-arg RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}"
+	if [ "${scan_image_target}" != dev ]; then
+		# Any target but dev may build on the runtime stages, including a derived
+		# stage `FROM runtime`, so none falls back to the mutable default tags in a
+		# scan: both locks must be digest-pinned, with the same shared check
+		# build.sh applies. Dockerfile ancestry is not parsed on purpose.
+		require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}" "scan the ${scan_image_target} image"
+		require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}" "scan the ${scan_image_target} image"
 	fi
+	# Always pass the locks. BuildKit skips stages the target does not use, and a
+	# blank lock (allowed only for dev) falls back to the Dockerfile default.
+	scan_image_build_args="--build-arg RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK:-} --build-arg RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}"
 	scan_image_built=true
 	build_scan_target "${scan_image_target}" "${scan_image_tag}" "${scan_image_build_args}"
 	scan_image_tar=$(mktemp "${docker_tmpdir}/scan-image.XXXXXX")
