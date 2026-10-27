@@ -17,7 +17,16 @@ esac
 }
 
 # Load project settings such as image names and pinned tool images.
+# Read the workflow commands only from the config, never from the caller's
+# environment, so an exported variable cannot replace the reviewed command.
+unset PROJECT_BUILD_COMMAND PROJECT_LINT_COMMAND PROJECT_TEST_COMMAND PROJECT_RUN_COMMAND
 . "${project_cfg_file}"
+
+# Workflow commands run through `sh -eu -c` in the existing non-root dev
+# container. Fall back to the Go example commands so older layered configs that
+# predate these settings keep working unchanged. Only an unset variable falls
+# back; an explicitly empty command is a deliberate no-op.
+project_build_command=${PROJECT_BUILD_COMMAND-'cd src && go build -trimpath -buildvcs=false ./cmd/app'}
 
 # Reuse the project name to derive the example image name used by the bundled Go app.
 case "${PROJECT_NAME}" in
@@ -48,7 +57,7 @@ if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
 		-f Dockerfile \
 		-t "${src_image}" .
 else
-	# Build the Go example image first; later steps run inside this container.
+	# Build the dev image first; later steps run inside this container.
 	docker build \
 		--build-arg DEV_BASE_IMAGE="${DEV_GO_IMAGE_LOCK}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
@@ -70,11 +79,11 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 	-v "$(pwd):/workspace" \
 	-w /workspace \
 	"${src_image}" \
-	sh -eu -c 'cd src && go build -trimpath -buildvcs=false ./cmd/app'
+	sh -eu -c "${project_build_command}"
 
 printf '\n==> Build summary\n'
 # Print a short recap so users can see which image and config were used.
 printf '%s\n' "Image: ${src_image}"
 printf '%s\n' "Project config: ${PROJECT_CFG_FILE}"
-printf '%s\n' 'Workspace: src'
+printf '%s\n' "Build command: ${project_build_command}"
 printf '%s\n' 'Result: build passed'

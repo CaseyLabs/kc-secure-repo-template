@@ -29,8 +29,10 @@ between local and GitHub Actions behavior.
 4. Identify how the project builds, tests, runs, and releases before changing
    root workflow files.
 5. Adjust `Dockerfile` for the project's build and test toolchain.
-6. Update `scripts/build.sh`, `scripts/test.sh`, and `scripts/run.sh` only as
-   needed for the project.
+6. Set `PROJECT_BUILD_COMMAND`, `PROJECT_LINT_COMMAND`, `PROJECT_TEST_COMMAND`,
+   and `PROJECT_RUN_COMMAND` in `config/project.cfg` for the project's stack
+   (see `docs/build-commands.md`). Edit `scripts/build.sh`, `scripts/test.sh`,
+   and `scripts/run.sh` only for needs those settings cannot cover.
 7. Run `make build`, `make test`, and `make scan`.
 8. Review `.github/workflows/` and keep workflows calling `make` targets.
 9. Keep or remove optional `config/k8s/` and `config/infra/` support based on

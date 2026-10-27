@@ -10,7 +10,16 @@ case "${project_cfg_file}" in
 *) project_cfg_file="./${project_cfg_file}" ;;
 esac
 # Load image names and other settings used to start the example app.
+# Read the workflow commands only from the config, never from the caller's
+# environment, so an exported variable cannot replace the reviewed command.
+unset PROJECT_BUILD_COMMAND PROJECT_LINT_COMMAND PROJECT_TEST_COMMAND PROJECT_RUN_COMMAND
 . "${project_cfg_file}"
+
+# Workflow commands run through `sh -eu -c` in the existing non-root dev
+# container. Fall back to the Go example commands so older layered configs that
+# predate these settings keep working unchanged. Only an unset variable falls
+# back; an explicitly empty command is a deliberate no-op.
+project_run_command=${PROJECT_RUN_COMMAND-'cd src && go run ./cmd/app'}
 
 # Build the example container name from the configured project name.
 case "${PROJECT_NAME}" in
@@ -40,7 +49,7 @@ if docker ps -aq --filter "name=^${container_name}$" | grep -q .; then
 fi
 
 printf '\n==> Run src container\n'
-# Start the Go example in detached mode so other commands can inspect it afterward.
+# Start PROJECT_RUN_COMMAND (the Go example by default) in detached mode so other commands can inspect it afterward.
 container_id=$(
 	docker run -d \
 		--name "${container_name}" \
@@ -54,7 +63,7 @@ container_id=$(
 		-v "$(pwd):/workspace" \
 		-w /workspace \
 		"${src_image}" \
-		sh -eu -c 'cd src && go run ./cmd/app'
+		sh -eu -c "${project_run_command}"
 )
 
 printf '\n==> Run summary\n'
