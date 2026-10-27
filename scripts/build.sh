@@ -54,8 +54,7 @@ mkdir -p "${docker_home_source}" "${docker_tmpdir}"
 # built first: the lock checks then fail fast, before the slower dev build.
 # Both locks must be digest-pinned, so the build never falls back to a mutable tag.
 if [ -n "${project_runtime_image}" ]; then
-	require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}" "build PROJECT_RUNTIME_IMAGE"
-	require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}" "build PROJECT_RUNTIME_IMAGE"
+	require_runtime_locks runtime "build PROJECT_RUNTIME_IMAGE"
 	printf '\n==> Build runtime image\n'
 	# Plain `docker build` (no Buildx cache) keeps this path simple; the stage is small.
 	docker build \

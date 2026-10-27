@@ -15,6 +15,20 @@ require_pinned_lock() {
 	}
 }
 
+# Exit unless both runtime locks are digest-pinned when Dockerfile target $1 is
+# not dev; $2 says what needs them. Any target but dev may build on the runtime
+# stages, including a derived stage `FROM runtime`, so none may fall back to the
+# mutable default tags. Dockerfile ancestry is not parsed on purpose. Callers
+# pass each lock as a RUNTIME_* build arg for every target whenever it is set
+# (BuildKit skips stages the target does not use), and omit a blank one (allowed
+# only for dev): an empty --build-arg would override an `ARG X=default` and
+# leave a blank FROM, which BuildKit rejects in every stage.
+require_runtime_locks() {
+	[ "$1" = dev ] && return 0
+	require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}" "$2"
+	require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}" "$2"
+}
+
 # Exit when the legacy builder is requested, and otherwise force BuildKit.
 # Without BuildKit, `docker build --target dev` still builds every stage above
 # `dev` in the Dockerfile, including the optional runtime stages from their

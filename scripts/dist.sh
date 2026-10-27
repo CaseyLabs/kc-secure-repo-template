@@ -49,6 +49,9 @@ fi
 project_image=${PROJECT_IMAGE:-kc-secure-template-dev:local}
 project_dockerfile=${PROJECT_DOCKERFILE:-Dockerfile}
 project_build_target=${PROJECT_BUILD_TARGET:-dev}
+# A non-dev target needs digest-pinned runtime locks; check before any docker
+# call (see require_runtime_locks).
+require_runtime_locks "${project_build_target}" "build the ${project_build_target} image in make dist"
 
 # Match host uid/gid for bind-mounted files and persistent cache directories.
 docker_uid=${DOCKER_UID:-$(id -u)}
@@ -68,15 +71,20 @@ if [ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]; then
 		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		${DEV_GO_IMAGE_LOCK:+--build-arg RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK}} \
+		${DEV_DISTROLESS_STATIC_IMAGE_LOCK:+--build-arg RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}} \
 		--target "${project_build_target}" \
 		-f "${project_dockerfile}" \
 		-t "${project_image}" .
 else
 	# Build the main project image that knows how to create the release artifact.
+	# shellcheck disable=SC2086
 	docker build \
 		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
+		${DEV_GO_IMAGE_LOCK:+--build-arg RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK}} \
+		${DEV_DISTROLESS_STATIC_IMAGE_LOCK:+--build-arg RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}} \
 		--target "${project_build_target}" \
 		-f "${project_dockerfile}" \
 		-t "${project_image}" .

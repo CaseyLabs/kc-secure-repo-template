@@ -15,7 +15,9 @@ ARG RUNTIME_BASE_IMAGE
 # The `dev` target below never uses them, so a default build is unchanged.
 # The fallback tags only exist because BuildKit rejects a blank `FROM` in any
 # stage, even one it does not build. `make build` always passes the digest locks
-# and refuses to build the runtime image without them.
+# and refuses to build the runtime image without them. `make scan` and
+# `make dist` also pass the locks, and refuse any `PROJECT_BUILD_TARGET` (or scan
+# target) other than `dev` unless both are digest-pinned.
 # The legacy builder (`DOCKER_BUILDKIT=0`) builds every stage above the target,
 # so it would pull these fallback tags even for `--target dev`; the build, scan,
 # and dist scripts refuse it.

@@ -739,8 +739,27 @@ EOF
 		# The dev target needs no runtime locks, so blank selectors still scan it.
 		printf '%s\n' "PROJECT_SCAN_IMAGE_TARGET='dev'" "DEV_DISTROLESS_STATIC_IMAGE_LOCK=''" >>config/project.cfg.test
 		PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-dev-blank.txt 2>&1 || fail 'scan should build the dev target without runtime locks'
-		# Blank locks reach the build as empty args, so the Dockerfile defaults apply.
-		grep -F -- '-t kc-secure-template-vuln-scan:local' docker.log | tail -n 1 | grep -Fq -- 'RUNTIME_BASE_IMAGE= ' || fail 'a blank lock should reach the dev scan build as an empty arg'
+		# Both locks are blank by now. A blank lock is omitted, not passed empty: an
+		# empty --build-arg would override an `ARG X=default` and leave a blank FROM.
+		! grep -F -- '-t kc-secure-template-vuln-scan:local' docker.log | tail -n 1 | grep -Fq -- 'RUNTIME_' || fail 'blank locks should be omitted from the dev scan build'
+
+		# The main project image build gets the same pinned RUNTIME_* args, so a
+		# derived PROJECT_BUILD_TARGET never builds from the mutable default tags.
+		rm -f docker.log
+		cp config/project.cfg config/project.cfg.build-target
+		printf '%s\n' "PROJECT_BUILD_TARGET='derived'" >>config/project.cfg.build-target
+		PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" sh ./scripts/scan.sh config/project.cfg.build-target >${TMPDIR}/template-scan-build-target.txt 2>&1 || fail 'scan should build a derived PROJECT_BUILD_TARGET with pinned locks'
+		project_build=$(grep -F -- '--target derived' docker.log) || fail 'scan should build the configured PROJECT_BUILD_TARGET'
+		printf '%s\n' "${project_build}" | grep -Fq -- "RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK}" || fail 'a derived project build target should get the pinned Go build lock in scan'
+		printf '%s\n' "${project_build}" | grep -Fq -- "RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" || fail 'a derived project build target should get the pinned distroless lock in scan'
+		# A blank lock fails before any image is built.
+		rm -f docker.log
+		printf '%s\n' "DEV_DISTROLESS_STATIC_IMAGE_LOCK=''" >>config/project.cfg.build-target
+		if PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" sh ./scripts/scan.sh config/project.cfg.build-target >${TMPDIR}/template-scan-build-target-blank.txt 2>&1; then
+			fail 'scan should require digest-pinned locks for a derived PROJECT_BUILD_TARGET'
+		fi
+		grep -Fq 'DEV_DISTROLESS_STATIC_IMAGE_LOCK must be pinned by digest' ${TMPDIR}/template-scan-build-target-blank.txt || fail 'scan should name the unpinned lock for a derived PROJECT_BUILD_TARGET'
+		! grep -Fqs -- '--target ' docker.log || fail 'scan should check the locks before building the project image'
 	)
 	rm -rf "${workdir}"
 }
@@ -1271,6 +1290,31 @@ EOF
 		fi
 		grep -Fq 'requires BuildKit' dist.txt || fail 'dist should explain why DOCKER_BUILDKIT=0 is refused'
 		[ ! -s docker.log ] || fail 'dist should refuse DOCKER_BUILDKIT=0 before calling docker'
+
+		# A derived PROJECT_BUILD_TARGET gets the pinned RUNTIME_* args, so the
+		# release image never builds from the mutable default tags.
+		: >docker.log
+		cp config/project.cfg config/project.cfg.build-target
+		printf '%s\n' "PROJECT_BUILD_TARGET='derived'" >>config/project.cfg.build-target
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/dist.sh config/project.cfg.build-target >${TMPDIR}/template-dist-build-target.txt 2>&1 || fail 'dist should build a derived PROJECT_BUILD_TARGET with pinned locks'
+		dist_build=$(grep -F -- '--target derived' docker.log) || fail 'dist should build the configured PROJECT_BUILD_TARGET'
+		printf '%s\n' "${dist_build}" | grep -Fq -- "RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK}" || fail 'a derived dist build target should get the pinned Go build lock'
+		printf '%s\n' "${dist_build}" | grep -Fq -- "RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" || fail 'a derived dist build target should get the pinned distroless lock'
+		# A blank lock fails before any image is built.
+		: >docker.log
+		printf '%s\n' "DEV_GO_IMAGE_LOCK=''" >>config/project.cfg.build-target
+		if PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/dist.sh config/project.cfg.build-target >dist.txt 2>&1; then
+			fail 'dist should require digest-pinned locks for a derived PROJECT_BUILD_TARGET'
+		fi
+		grep -Fq 'DEV_GO_IMAGE_LOCK must be pinned by digest' dist.txt || fail 'dist should name the unpinned lock for a derived PROJECT_BUILD_TARGET'
+		[ ! -s docker.log ] || fail 'dist should check the locks before calling docker'
+		# The dev target allows a blank lock and omits it rather than passing it
+		# empty, so the Dockerfile default applies.
+		printf '%s\n' "PROJECT_BUILD_TARGET='dev'" >>config/project.cfg.build-target
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/dist.sh config/project.cfg.build-target >${TMPDIR}/template-dist-dev-blank.txt 2>&1 || fail 'dist should build the dev target with a blank lock'
+		dist_dev_build=$(grep -F -- '--target dev' docker.log) || fail 'dist should build the dev target'
+		! printf '%s\n' "${dist_dev_build}" | grep -Fq -- 'RUNTIME_BUILD_IMAGE' || fail 'a blank lock should be omitted from the dist build'
+		printf '%s\n' "${dist_dev_build}" | grep -Fq -- "RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" || fail 'a set lock should still reach the dist build'
 	)
 	rm -rf "${workdir}"
 }

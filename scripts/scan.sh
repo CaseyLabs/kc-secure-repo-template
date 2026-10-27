@@ -87,6 +87,12 @@ trap 'exit 143' TERM
 . ./scripts/commit-policy.sh
 . ./scripts/agent-policy.sh
 require_buildkit "make scan"
+# Check the runtime locks for every target this scan builds before any build
+# starts, so an unpinned lock fails fast (see require_runtime_locks).
+require_runtime_locks "${project_build_target}" "build the ${project_build_target} image in make scan"
+if [ "${scan_image_vulns}" = true ]; then
+	require_runtime_locks "${scan_image_target}" "scan the ${scan_image_target} image"
+fi
 
 # Host-only checks run first: they need only sh, git, grep, sed, and awk, so a
 # PR that breaks them fails in seconds instead of after the image build and
@@ -104,8 +110,8 @@ check_commit_attribution_policy
 
 # Build one Dockerfile target with the pinned build args. The project image and
 # the opt-in vulnerability-scan image share this path so the args never drift.
-# $1 is the target, $2 the image tag, and $3 optional extra build args (word-split
-# on purpose, so keep them free of spaces).
+# $1 is the target and $2 the image tag. The RUNTIME_* locks were checked up
+# front by require_runtime_locks; each is passed whenever it is set (see there).
 build_scan_target() {
 	# GitHub Actions can opt into Buildx cache export/import without changing local defaults.
 	build_command=build
@@ -115,7 +121,8 @@ build_scan_target() {
 		--build-arg DEV_BASE_IMAGE="${DEV_BASE_IMAGE_LOCK:-${DEV_BASE_IMAGE}}" \
 		--build-arg DEV_PACKAGE_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
 		--build-arg DEBIAN_APT_SNAPSHOT="${DEV_PACKAGE_SNAPSHOT_LOCK}" \
-		${3:-} \
+		${DEV_GO_IMAGE_LOCK:+--build-arg RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK}} \
+		${DEV_DISTROLESS_STATIC_IMAGE_LOCK:+--build-arg RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}} \
 		--target "$1" \
 		-f "${project_dockerfile}" \
 		-t "$2" .
@@ -298,19 +305,9 @@ docker run --rm --user "${docker_uid}:${docker_gid}" \
 # Off by default and silent when off, so the default scan output is unchanged.
 if [ "${scan_image_vulns}" = true ]; then
 	printf '\n==> Run image vulnerability scan\n'
-	if [ "${scan_image_target}" != dev ]; then
-		# Any target but dev may build on the runtime stages, including a derived
-		# stage `FROM runtime`, so none falls back to the mutable default tags in a
-		# scan: both locks must be digest-pinned, with the same shared check
-		# build.sh applies. Dockerfile ancestry is not parsed on purpose.
-		require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}" "scan the ${scan_image_target} image"
-		require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}" "scan the ${scan_image_target} image"
-	fi
-	# Always pass the locks. BuildKit skips stages the target does not use, and a
-	# blank lock (allowed only for dev) falls back to the Dockerfile default.
-	scan_image_build_args="--build-arg RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK:-} --build-arg RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}"
+	# The runtime locks for this target were checked before the first build.
 	scan_image_built=true
-	build_scan_target "${scan_image_target}" "${scan_image_tag}" "${scan_image_build_args}"
+	build_scan_target "${scan_image_target}" "${scan_image_tag}"
 	scan_image_tar=$(mktemp "${docker_tmpdir}/scan-image.XXXXXX")
 	docker save -o "${scan_image_tar}" "${scan_image_tag}"
 	# Unlike the other scanners, Trivy needs network access here to fetch its
