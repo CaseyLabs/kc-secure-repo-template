@@ -15,6 +15,23 @@ require_pinned_lock() {
 	}
 }
 
+# Exit when the legacy builder is requested, and otherwise force BuildKit.
+# Without BuildKit, `docker build --target dev` still builds every stage above
+# `dev` in the Dockerfile, including the optional runtime stages from their
+# mutable fallback tags. Docker reads DOCKER_BUILDKIT as a boolean, so every
+# false spelling it accepts is refused. Exporting DOCKER_BUILDKIT=1 also stops a
+# daemon configured with `features.buildkit=false` from picking the builder.
+require_buildkit() {
+	case "${DOCKER_BUILDKIT-}" in
+	0 | f | F | false | FALSE | False)
+		printf '%s requires BuildKit; unset DOCKER_BUILDKIT=%s to use the default builder\n' "$1" "${DOCKER_BUILDKIT}" >&2
+		exit 1
+		;;
+	esac
+	DOCKER_BUILDKIT=1
+	export DOCKER_BUILDKIT
+}
+
 # Read every external GitHub Action reference from workflow files.
 list_workflow_entries() {
 	for workflow in .github/workflows/*.yml; do
@@ -132,11 +149,31 @@ check_workflow_scanner_suppressions() {
 	return 1
 }
 
+# Print the FROM line and instructions of Dockerfile stage $1 from file $2.
+# Dockerfile keywords and stage names are case-insensitive, so match on lowercase.
+print_dockerfile_stage() {
+	awk -v stage="$1" '
+		{ line = tolower($0) }
+		line ~ /^[[:space:]]*from[[:space:]]/ {
+			in_stage = (line ~ ("[[:space:]]as[[:space:]]+" stage "[[:space:]]*$"))
+		}
+		in_stage { print }
+	' "$2"
+}
+
+# True when USER part $1 is a literal non-root name or non-zero numeric ID.
+is_unprivileged_id() {
+	[ -n "$1" ] && [ "$1" != root ] && ! printf '%s\n' "$1" | grep -Eq '^0+$|[$]'
+}
+
 # Policy for the optional distroless `runtime` stage in the Dockerfile. Derived
 # repositories that delete the stage are not checked. When the stage exists it
 # must (1) build FROM the `RUNTIME_BASE_IMAGE` arg that `make build` fills with
-# the digest lock, (2) keep that lock digest-pinned, (3) end as a non-root user,
-# and (4) use an exec-form ENTRYPOINT, because distroless images have no shell.
+# the digest lock, (2) keep that lock digest-pinned, (3) end as a non-root user
+# and group, and (4) use an exec-form ENTRYPOINT, because distroless images have
+# no shell. Its `runtime-build` stage must also build FROM the
+# `RUNTIME_BUILD_IMAGE` arg, and the runtime stage may only copy from that
+# stage, so the compiler image is digest-locked too.
 # An empty lock is allowed: it means the selector was left blank, and
 # `make build` refuses to build the runtime image without a pinned lock.
 # Arguments: Dockerfile path, lockfile path (both default to the repository's).
@@ -144,15 +181,7 @@ check_runtime_image_policy() {
 	runtime_dockerfile=${1:-Dockerfile}
 	runtime_lockfile=${2:-config/lockfile.cfg}
 
-	# Print the `AS runtime` FROM line, then that stage's instructions. Dockerfile
-	# keywords and stage names are case-insensitive, so match on lowercase.
-	runtime_stage=$(awk '
-		{ line = tolower($0) }
-		line ~ /^[[:space:]]*from[[:space:]]/ {
-			in_stage = (line ~ /[[:space:]]as[[:space:]]+runtime[[:space:]]*$/)
-		}
-		in_stage { print }
-	' "${runtime_dockerfile}")
+	runtime_stage=$(print_dockerfile_stage runtime "${runtime_dockerfile}")
 	[ -n "${runtime_stage}" ] || return 0
 
 	runtime_from=$(printf '%s\n' "${runtime_stage}" | head -n 1)
@@ -164,6 +193,34 @@ check_runtime_image_policy() {
 		;;
 	esac
 
+	# A missing or renamed `runtime-build` stage fails too, so the copy source
+	# checked below is always the stage built from the locked compiler image.
+	runtime_build_from=$(print_dockerfile_stage runtime-build "${runtime_dockerfile}" | head -n 1)
+	case "${runtime_build_from}" in
+	*'${RUNTIME_BUILD_IMAGE'[:}]*) ;;
+	*)
+		printf 'runtime-build stage in %s must build FROM ${RUNTIME_BUILD_IMAGE...}\n' "${runtime_dockerfile}" >&2
+		return 1
+		;;
+	esac
+
+	# The runtime stage may copy only from `runtime-build`, so the locked build
+	# stage cannot be sidestepped by copying from another stage or an image.
+	# Stage names are case-insensitive, so compare on lowercase.
+	runtime_copy_sources=$(printf '%s\n' "${runtime_stage}" | awk '
+		{ line = tolower($0) }
+		line ~ /^[[:space:]]*(copy|add)[[:space:]]/ {
+			while (match(line, /--from=[^[:space:]]*/)) {
+				print substr(line, RSTART + 7, RLENGTH - 7)
+				line = substr(line, RSTART + RLENGTH)
+			}
+		}
+	')
+	if [ -n "${runtime_copy_sources}" ] && printf '%s\n' "${runtime_copy_sources}" | grep -qv '^runtime-build$'; then
+		printf 'runtime stage in %s may only COPY --from=runtime-build\n' "${runtime_dockerfile}" >&2
+		return 1
+	fi
+
 	runtime_lock=$(sed -n "s/^DEV_DISTROLESS_STATIC_IMAGE_LOCK='\(.*\)'\$/\1/p" "${runtime_lockfile}")
 	if [ -n "${runtime_lock}" ] && ! is_digest_pinned "${runtime_lock}"; then
 		printf 'DEV_DISTROLESS_STATIC_IMAGE_LOCK must be pinned by digest in %s\n' "${runtime_lockfile}" >&2
@@ -171,13 +228,16 @@ check_runtime_image_policy() {
 	fi
 
 	# The last USER instruction wins in Docker, so judge that one. Only a literal
-	# user name or non-zero UID passes: root, UID 0 (in any spelling), and
-	# variables that cannot be checked here are rejected.
+	# name or non-zero ID passes for the user and, when given, the group: root,
+	# ID 0 (in any spelling), and variables that cannot be checked here are
+	# rejected. `USER name` with no group keeps that user's own primary group.
 	runtime_user=$(printf '%s\n' "${runtime_stage}" | sed -n 's/^[[:space:]]*[Uu][Ss][Ee][Rr][[:space:]]\{1,\}\([^[:space:]]*\).*/\1/p' | tail -n 1)
-	runtime_user=${runtime_user%%:*}
-	if [ -z "${runtime_user}" ] || [ "${runtime_user}" = root ] ||
-		printf '%s\n' "${runtime_user}" | grep -Eq '^0+$|[$]'; then
-		printf 'runtime stage in %s must set a non-root USER\n' "${runtime_dockerfile}" >&2
+	runtime_group_ok=true
+	case "${runtime_user}" in
+	*:*) is_unprivileged_id "${runtime_user#*:}" || runtime_group_ok=false ;;
+	esac
+	if ! is_unprivileged_id "${runtime_user%%:*}" || [ "${runtime_group_ok}" = false ]; then
+		printf 'runtime stage in %s must set a non-root USER and group\n' "${runtime_dockerfile}" >&2
 		return 1
 	fi
 

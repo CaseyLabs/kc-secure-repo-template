@@ -80,6 +80,7 @@ Dockerfile
 Makefile
 scripts/build.sh
 scripts/test.sh
+scripts/workflow-policy.sh
 config/project.cfg
 config/lockfile.cfg
 .github/workflows/test.yml' true true
@@ -733,6 +734,14 @@ EOF
 		printf '%s\n' "${actionlint_line}" | grep -Fq -- '--network=none' || fail 'actionlint should run without network access'
 		printf '%s\n' "${actionlint_line}" | grep -Fq -- ':/workspace:ro' || fail 'actionlint should mount the repository read-only'
 
+		# The legacy builder would also build the runtime stages from mutable tags.
+		: >docker.log
+		if DOCKER_BUILDKIT=0 PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-args-legacy-builder.txt 2>&1; then
+			fail 'scan should refuse DOCKER_BUILDKIT=0'
+		fi
+		grep -Fq 'requires BuildKit' ${TMPDIR}/template-scan-args-legacy-builder.txt || fail 'scan should explain why DOCKER_BUILDKIT=0 is refused'
+		[ ! -s docker.log ] || fail 'scan should refuse DOCKER_BUILDKIT=0 before calling docker'
+
 		# With Git metadata the scan covers history through the git subcommand.
 		git init -q .
 		git -c user.name=fixture -c user.email=fixture@example.invalid commit -q --allow-empty -m "[test] fixture: init"
@@ -820,12 +829,19 @@ test_runtime_image_build() {
 		cat >fake-bin/docker <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >>docker.log
+printf '%s\n' "${DOCKER_BUILDKIT-unset}" >>buildkit.log
 exit 0
 EOF
 		chmod +x fake-bin/docker
 
 		: >docker.log
-		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg >/dev/null
+		: >buildkit.log
+		(
+			unset DOCKER_BUILDKIT
+			PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg >/dev/null
+		)
+		# A daemon configured for the legacy builder must not decide the builder.
+		[ "$(sort -u buildkit.log)" = 1 ] || fail 'build should run docker with DOCKER_BUILDKIT=1'
 		grep -Fq -- '--target runtime' docker.log && fail 'a default build must not build the runtime stage'
 		grep -Fq -- '--target dev' docker.log || fail 'a default build should still build the dev stage'
 
@@ -836,6 +852,21 @@ EOF
 		for expected in "-t example-runtime:local" "RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" "RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK}"; do
 			printf '%s\n' "${runtime_line}" | grep -Fq -- "${expected}" || fail "runtime build should pass ${expected}"
 		done
+
+		# The legacy builder builds every stage before --target, including the
+		# runtime stages from their mutable fallback tags, so it is refused.
+		for buildkit_off in 0 false FALSE; do
+			: >docker.log
+			rm -rf .cache
+			if DOCKER_BUILDKIT=${buildkit_off} PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg >build.txt 2>&1; then
+				fail "build should refuse DOCKER_BUILDKIT=${buildkit_off}"
+			fi
+			grep -Fq 'requires BuildKit' build.txt || fail "build should explain why DOCKER_BUILDKIT=${buildkit_off} is refused"
+			[ ! -s docker.log ] || fail "build should refuse DOCKER_BUILDKIT=${buildkit_off} before calling docker"
+			[ ! -e .cache ] || fail "build should refuse DOCKER_BUILDKIT=${buildkit_off} before creating .cache"
+		done
+		: >docker.log
+		DOCKER_BUILDKIT=1 PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg >/dev/null || fail 'build should accept DOCKER_BUILDKIT=1'
 
 		# Opting in without digest locks must fail before any docker build, rather
 		# than fall back to the Dockerfile's mutable default tags.
@@ -894,12 +925,38 @@ test_runtime_image_policy() {
 	assert_runtime_policy_rejects 'an unverifiable USER variable' \
 		"sed -i 's/^USER nonroot:nonroot\$/USER \${APP_UID}/' Dockerfile" \
 		'must set a non-root USER'
+	assert_runtime_policy_rejects 'a root group by GID' \
+		"sed -i 's/^USER nonroot:nonroot\$/USER nonroot:0/' Dockerfile" \
+		'must set a non-root USER and group'
+	assert_runtime_policy_rejects 'a root group by name' \
+		"sed -i 's/^USER nonroot:nonroot\$/USER 65532:root/' Dockerfile" \
+		'must set a non-root USER and group'
+	assert_runtime_policy_rejects 'an unverifiable group variable' \
+		"sed -i 's/^USER nonroot:nonroot\$/USER nonroot:\${APP_GID}/' Dockerfile" \
+		'must set a non-root USER and group'
+	assert_runtime_policy_rejects 'a build stage that bypasses the lock' \
+		"sed -i 's#^FROM .* AS runtime-build\$#FROM golang:trixie AS runtime-build#' Dockerfile" \
+		'runtime-build stage in Dockerfile must build FROM'
+	assert_runtime_policy_rejects 'a renamed build stage' \
+		"sed -i -e 's# AS runtime-build\$# AS builder#' -e 's#--from=runtime-build#--from=builder#' Dockerfile" \
+		'runtime-build stage in Dockerfile must build FROM'
+	assert_runtime_policy_rejects 'a runtime stage that copies from another stage' \
+		"sed -i -e 's#^COPY --from=runtime-build #COPY --from=builder #' -e 's#^FROM .* AS dev\$#FROM golang:latest AS builder\\n&#' Dockerfile" \
+		'runtime stage in Dockerfile may only COPY --from=runtime-build'
+	assert_runtime_policy_rejects 'a runtime stage that copies from an image' \
+		"sed -i 's#^COPY --from=runtime-build #COPY --from=golang:latest #' Dockerfile" \
+		'runtime stage in Dockerfile may only COPY --from=runtime-build'
 	assert_runtime_policy_rejects 'root USER in a differently cased stage' \
 		"sed -i -e 's/ AS runtime\$/ as Runtime/' -e 's/^USER nonroot:nonroot\$/user root/' Dockerfile" \
 		'must set a non-root USER'
 	assert_runtime_policy_rejects 'a shell-form ENTRYPOINT' \
 		"sed -i 's#^ENTRYPOINT .*#ENTRYPOINT /app#' Dockerfile" \
 		'must use an exec-form ENTRYPOINT'
+	# A USER without a group keeps that user's own primary group, which is fine.
+	fixture_dir=$(mktemp -d)
+	sed -e 's/^USER nonroot:nonroot$/USER nonroot/' Dockerfile >"${fixture_dir}/Dockerfile"
+	check_runtime_image_policy "${fixture_dir}/Dockerfile" config/lockfile.cfg || fail 'runtime policy should accept a USER without a group'
+	rm -rf "${fixture_dir}"
 	# A blank selector leaves an empty lock; make build refuses to opt in then.
 	fixture_dir=$(mktemp -d)
 	sed -e "s#^DEV_DISTROLESS_STATIC_IMAGE_LOCK=.*#DEV_DISTROLESS_STATIC_IMAGE_LOCK=''#" config/lockfile.cfg >"${fixture_dir}/lockfile.cfg"
@@ -1057,6 +1114,13 @@ EOF
 		printf '%s\n' "${syft_line}" | grep -Fq -- ':/workspace:ro' || fail 'syft should mount the repository read-only'
 		grype_line=$(grep -F -- "${DEV_SCAN_GRYPE_IMAGE_LOCK}" docker.log) || fail 'dist should run the digest-pinned grype image'
 		printf '%s\n' "${grype_line}" | grep -Fq -- ':/workspace:ro' || fail 'grype should mount the repository read-only'
+
+		: >docker.log
+		if DOCKER_BUILDKIT=0 PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/dist.sh config/project.cfg >dist.txt 2>&1; then
+			fail 'dist should refuse DOCKER_BUILDKIT=0'
+		fi
+		grep -Fq 'requires BuildKit' dist.txt || fail 'dist should explain why DOCKER_BUILDKIT=0 is refused'
+		[ ! -s docker.log ] || fail 'dist should refuse DOCKER_BUILDKIT=0 before calling docker'
 	)
 	rm -rf "${workdir}"
 }
