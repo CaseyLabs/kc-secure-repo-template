@@ -33,6 +33,9 @@ between local and GitHub Actions behavior.
    and `PROJECT_RUN_COMMAND` in `config/project.cfg` for the project's stack
    (see `docs/build-commands.md`). Edit `scripts/build.sh`, `scripts/test.sh`,
    and `scripts/run.sh` only for needs those settings cannot cover.
+   Node.js and Python examples, including a sketch runtime stage, are in
+   `.agents/skills/repo-adaptation/references/language-guidance.md`; apply them
+   in the derived repository, not the template.
 7. Run `make build`, `make test`, and `make scan`.
 8. Review `.github/workflows/` and keep workflows calling `make` targets.
 9. Keep or remove optional `config/k8s/` and `config/infra/` support based on
