@@ -886,21 +886,65 @@ EOF
 	rm -rf "${workdir}"
 }
 
+# The dev image must keep GOTOOLCHAIN=local itself rather than rely on the
+# upstream golang image setting it, so removing the ENV line is caught statically.
+test_dev_image_policy() {
+	check_dev_image_policy Dockerfile || fail 'dev policy should accept the shipped Dockerfile'
+	assert_runtime_policy_rejects 'a dev stage without GOTOOLCHAIN=local' \
+		"sed -i '/^ENV GOTOOLCHAIN=local\$/d' Dockerfile" \
+		'dev stage in Dockerfile must set ENV GOTOOLCHAIN=local' check_dev_image_policy
+	assert_runtime_policy_rejects 'a dev stage that later resets GOTOOLCHAIN' \
+		"sed -i 's#^USER app:app\$#ENV GOTOOLCHAIN=auto\\n&#' Dockerfile" \
+		'dev stage in Dockerfile must set ENV GOTOOLCHAIN=local' check_dev_image_policy
+	# The ENV in runtime-build must not count for the dev stage.
+	fixture_dir=$(mktemp -d)
+	printf '%s\n' 'FROM golang AS runtime-build' 'ENV GOTOOLCHAIN=local' 'FROM debian AS dev' >"${fixture_dir}/Dockerfile"
+	if check_dev_image_policy "${fixture_dir}/Dockerfile" >"${fixture_dir}/policy.txt" 2>&1; then
+		fail 'dev policy should only accept GOTOOLCHAIN=local set in the dev stage'
+	fi
+	# The space-separated legacy ENV form and quoted values set it too.
+	printf '%s\n' 'FROM debian AS dev' 'ENV GOTOOLCHAIN local' >"${fixture_dir}/Dockerfile"
+	check_dev_image_policy "${fixture_dir}/Dockerfile" || fail 'dev policy should accept ENV GOTOOLCHAIN local'
+	printf '%s\n' 'FROM debian AS dev' 'env HOME=/home/app GOTOOLCHAIN="local"' >"${fixture_dir}/Dockerfile"
+	check_dev_image_policy "${fixture_dir}/Dockerfile" || fail 'dev policy should accept a quoted multi-key ENV'
+	rm -rf "${fixture_dir}"
+}
+
+# Needs a real Docker daemon and the already-built dev image, so it runs from
+# template mode rather than the Docker-free `_regression` fixtures.
+test_dev_image_rejects_newer_go_toolchain() {
+	# Raise the `go` line far past any real release. With Go's default
+	# GOTOOLCHAIN=auto, `go` would try to download that toolchain (bypassing the
+	# DEV_GO_IMAGE_LOCK digest); with GOTOOLCHAIN=local it must refuse and say so.
+	cp src/go.mod "${TMPDIR}/go.mod.orig"
+	sed 's/^go [0-9.]*$/go 1.999/' "${TMPDIR}/go.mod.orig" >src/go.mod
+	grep -qx 'go 1.999' src/go.mod || fail 'fixture should raise the go line in src/go.mod'
+	if make test TEST_MODE=src >"${TMPDIR}/template-gotoolchain.txt" 2>&1; then
+		fail 'make test should fail when src/go.mod is ahead of DEV_GO_IMAGE_LOCK'
+	fi
+	# This is Go's own error text for a go.mod newer than the local toolchain.
+	grep -Eq 'go\.mod requires go >= 1\.999 \(running go [^;]*; GOTOOLCHAIN=local\)' "${TMPDIR}/template-gotoolchain.txt" ||
+		fail 'make test should refuse a newer go.mod with GOTOOLCHAIN=local instead of downloading a toolchain'
+	cp "${TMPDIR}/go.mod.orig" src/go.mod
+}
+
 # Run the runtime policy against a mutated copy of the shipped Dockerfile/lockfile.
+# An optional fourth argument names another policy function to run instead.
 assert_runtime_policy_rejects() {
 	name=$1
 	mutation=$2
 	expected_message=$3
+	policy_check=${4:-check_runtime_image_policy}
 	fixture_dir=$(mktemp -d)
 	cp Dockerfile "${fixture_dir}/Dockerfile"
 	cp config/lockfile.cfg "${fixture_dir}/lockfile.cfg"
 	(
 		cd "${fixture_dir}"
 		eval "${mutation}"
-		if check_runtime_image_policy Dockerfile lockfile.cfg >policy.txt 2>&1; then
-			fail "runtime policy should reject ${name}"
+		if "${policy_check}" Dockerfile lockfile.cfg >policy.txt 2>&1; then
+			fail "${policy_check} should reject ${name}"
 		fi
-		grep -q "${expected_message}" policy.txt || fail "runtime policy should report '${expected_message}' for ${name}"
+		grep -q "${expected_message}" policy.txt || fail "${policy_check} should report '${expected_message}' for ${name}"
 	)
 	rm -rf "${fixture_dir}"
 }
@@ -1853,6 +1897,7 @@ template | smoke | _regression)
 		test_update_gcr_digest
 		test_runtime_image_build
 		test_runtime_image_policy
+		test_dev_image_policy
 		test_optional_k8s_scan_skip
 		test_scan_scanner_arguments
 		test_scan_image_vulns
@@ -1879,6 +1924,7 @@ template | smoke | _regression)
 	grep -qx 'app' "${TMPDIR}/template-runtime-files.txt" || fail 'runtime image should contain the /app binary'
 	! grep -Eq '(^build/|\.go$|^go\.mod$)' "${TMPDIR}/template-runtime-files.txt" || fail 'runtime image must not contain source or tests'
 	docker image rm "${runtime_check_image}" >/dev/null
+	test_dev_image_rejects_newer_go_toolchain
 	if template_skip_src_tests; then
 		printf '%s\n' 'Skipping nested src tests (TEMPLATE_SKIP_SRC_TESTS=true); they are covered by the test-code job.'
 	else

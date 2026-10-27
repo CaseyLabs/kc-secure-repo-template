@@ -38,6 +38,15 @@ call instead of adding many new root targets.
   in `make status` and `make logs`.
 - The dev image must contain the toolchain the commands need; see
   `docs/customize-template.md`.
+- The dev image sets `GOTOOLCHAIN=local`, so Go uses only the toolchain in
+  `DEV_GO_IMAGE_LOCK` and never downloads another one.
+  - If the `go` line in `src/go.mod` is ahead of that image, `make build` and
+    `make test` fail with
+    `go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)`.
+  - A newer `toolchain` line is ignored; the image's Go version is used.
+  - `make scan` fails if the `dev` stage stops setting `GOTOOLCHAIN=local`.
+  - Fix it by raising `DEV_GO_IMAGE` in `config/project.cfg` and running
+    `make update` to refresh the digest lock, not by unsetting the variable.
 
 ## Specialized Commands
 

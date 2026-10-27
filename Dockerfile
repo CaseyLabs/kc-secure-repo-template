@@ -78,6 +78,17 @@ WORKDIR /workspace
 # Some tools look at `$HOME` for configuration and temporary files, so point it
 # at the home directory we created for the non-root user.
 ENV HOME=/home/app
+# Use only the Go toolchain in the pinned base image, matching `runtime-build`.
+# With Go's default (`auto`), raising the `go` or `toolchain` line in
+# `src/go.mod` past the image makes `make build`/`make test` download a newer
+# toolchain, bypassing the DEV_GO_IMAGE_LOCK digest. With `local`, Go ignores
+# the `toolchain` line, and a newer `go` line fails with
+# "go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)". Raise
+# DEV_GO_IMAGE in config/project.cfg and run `make update` instead.
+# The official golang images already set this; stating it here keeps the policy
+# from depending on the upstream image, and `make scan` checks it is present. A
+# derived repo with a non-Go base image can keep it: nothing else reads it.
+ENV GOTOOLCHAIN=local
 # All following instructions and the default command run as the `app` user.
 USER app:app
 
