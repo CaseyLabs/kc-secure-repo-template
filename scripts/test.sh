@@ -486,6 +486,7 @@ pin_selectors_to_locks() {
 		-e "s#^DEV_BASE_IMAGE=.*#DEV_BASE_IMAGE='${DEV_BASE_IMAGE_LOCK}'#" \
 		-e "s#^DEV_GO_IMAGE=.*#DEV_GO_IMAGE='${DEV_GO_IMAGE_LOCK}'#" \
 		-e "s#^DEV_TERRAFORM_IMAGE=.*#DEV_TERRAFORM_IMAGE='${DEV_TERRAFORM_IMAGE_LOCK}'#" \
+		-e "s#^DEV_DISTROLESS_STATIC_IMAGE=.*#DEV_DISTROLESS_STATIC_IMAGE='${DEV_DISTROLESS_STATIC_IMAGE_LOCK}'#" \
 		-e "s#^DEV_K8S_HELM_IMAGE=.*#DEV_K8S_HELM_IMAGE='${DEV_K8S_HELM_IMAGE_LOCK}'#" \
 		-e "s#^DEV_K8S_KUBECTL_IMAGE=.*#DEV_K8S_KUBECTL_IMAGE='${DEV_K8S_KUBECTL_IMAGE_LOCK}'#" \
 		-e "s#^DEV_SCAN_BETTERLEAKS_IMAGE=.*#DEV_SCAN_BETTERLEAKS_IMAGE='${DEV_SCAN_BETTERLEAKS_IMAGE_LOCK}'#" \
@@ -691,6 +692,157 @@ EOF
 		grep -Fq 'DEV_SCAN_GITLEAKS_IMAGE_LOCK must be pinned by digest' ${TMPDIR}/template-scan-args-legacy-unpinned.txt || fail 'unpinned legacy lock error should name DEV_SCAN_GITLEAKS_IMAGE_LOCK'
 	)
 	rm -rf "${workdir}"
+}
+
+# gcr.io selectors resolve through the gcr.io registry API and keep their tag
+# (decision D2), so the lock reads `name:tag@sha256:...`.
+test_update_gcr_digest() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+	digest="sha256:$(printf 'a%.0s' $(seq 1 64))"
+
+	mkdir -p "${workdir}/bin"
+	# Fake registry: log every request, answer token and manifest lookups.
+	cat >"${workdir}/bin/curl" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>curl.log
+case "\$*" in
+*gcr.io/v2/token*) printf '{"token":"fake-token"}\n' ;;
+*gcr.io/v2/distroless/static-debian13/manifests/nonroot*) printf 'HTTP/2 200\r\ndocker-content-digest: ${digest}\r\n' ;;
+*) printf 'unexpected curl call: %s\n' "\$*" >&2; exit 1 ;;
+esac
+EOF
+	chmod +x "${workdir}/bin/curl"
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		# Every other selector is already digest-pinned, so only gcr.io is looked up.
+		pin_selectors_to_locks <config/project.cfg |
+			sed -e "s#^DEV_DISTROLESS_STATIC_IMAGE=.*#DEV_DISTROLESS_STATIC_IMAGE='gcr.io/distroless/static-debian13:nonroot'#" >config/project.cfg.test
+		: >curl.log
+		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.test >/dev/null
+		grep -qx "DEV_DISTROLESS_STATIC_IMAGE_LOCK='gcr.io/distroless/static-debian13:nonroot@${digest}'" config/lockfile.cfg || fail 'update should lock a gcr.io selector to name:tag@digest'
+		grep -q 'gcr.io/v2/distroless/static-debian13/manifests/nonroot' curl.log || fail 'update should query the gcr.io manifest for the selector'
+
+		# A blank selector skips the lookup, like the optional k8s images.
+		sed -e "s#^DEV_DISTROLESS_STATIC_IMAGE=.*#DEV_DISTROLESS_STATIC_IMAGE=''#" config/project.cfg.test >config/project.cfg.blank
+		: >curl.log
+		PATH="${workdir}/bin:${PATH}" sh ./scripts/update.sh config/project.cfg.blank >/dev/null
+		grep -qx "DEV_DISTROLESS_STATIC_IMAGE_LOCK=''" config/lockfile.cfg || fail 'update should keep an empty distroless lock for a blank selector'
+		[ ! -s curl.log ] || fail 'update should not call the registry for a blank distroless selector'
+	)
+	rm -rf "${workdir}"
+}
+
+# The runtime image is opt-in: a default build must not touch the runtime stage.
+test_runtime_image_build() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		mkdir -p fake-bin
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+exit 0
+EOF
+		chmod +x fake-bin/docker
+
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg >/dev/null
+		grep -Fq -- '--target runtime' docker.log && fail 'a default build must not build the runtime stage'
+		grep -Fq -- '--target dev' docker.log || fail 'a default build should still build the dev stage'
+
+		printf '%s\n' '. ./config/project.cfg' "PROJECT_RUNTIME_IMAGE='example-runtime:local'" >config/project.cfg.runtime
+		: >docker.log
+		PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg.runtime >/dev/null
+		runtime_line=$(grep -F -- '--target runtime' docker.log) || fail 'PROJECT_RUNTIME_IMAGE should build the runtime stage'
+		for expected in "-t example-runtime:local" "RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" "RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK}"; do
+			printf '%s\n' "${runtime_line}" | grep -Fq -- "${expected}" || fail "runtime build should pass ${expected}"
+		done
+
+		# Opting in without digest locks must fail before any docker build, rather
+		# than fall back to the Dockerfile's mutable default tags.
+		cp config/lockfile.cfg config/lockfile.cfg.orig
+		for lock_name in DEV_DISTROLESS_STATIC_IMAGE_LOCK DEV_GO_IMAGE_LOCK; do
+			for mutation in "/^${lock_name}=/d" "s#^\(${lock_name}='[^@]*\)@sha256:[a-f0-9]*'#\1'#"; do
+				sed -e "${mutation}" config/lockfile.cfg.orig >config/lockfile.cfg
+				: >docker.log
+				if PATH="${workdir}/fake-bin:${PATH}" sh ./scripts/build.sh config/project.cfg.runtime >build.txt 2>&1; then
+					fail "runtime build should fail when ${lock_name} is missing or unpinned"
+				fi
+				grep -Fq "${lock_name} must be pinned by digest" build.txt || fail "runtime build should name ${lock_name}"
+				[ ! -s docker.log ] || fail "runtime build should reject ${lock_name} before calling docker"
+			done
+		done
+	)
+	rm -rf "${workdir}"
+}
+
+# Run the runtime policy against a mutated copy of the shipped Dockerfile/lockfile.
+assert_runtime_policy_rejects() {
+	name=$1
+	mutation=$2
+	expected_message=$3
+	fixture_dir=$(mktemp -d)
+	cp Dockerfile "${fixture_dir}/Dockerfile"
+	cp config/lockfile.cfg "${fixture_dir}/lockfile.cfg"
+	(
+		cd "${fixture_dir}"
+		eval "${mutation}"
+		if check_runtime_image_policy Dockerfile lockfile.cfg >policy.txt 2>&1; then
+			fail "runtime policy should reject ${name}"
+		fi
+		grep -q "${expected_message}" policy.txt || fail "runtime policy should report '${expected_message}' for ${name}"
+	)
+	rm -rf "${fixture_dir}"
+}
+
+test_runtime_image_policy() {
+	check_runtime_image_policy Dockerfile config/lockfile.cfg || fail 'runtime policy should accept the shipped Dockerfile and lockfile'
+	assert_runtime_policy_rejects 'an unpinned lock' \
+		"sed -i \"s#^DEV_DISTROLESS_STATIC_IMAGE_LOCK=.*#DEV_DISTROLESS_STATIC_IMAGE_LOCK='gcr.io/distroless/static-debian13:nonroot'#\" lockfile.cfg" \
+		'DEV_DISTROLESS_STATIC_IMAGE_LOCK must be pinned by digest'
+	assert_runtime_policy_rejects 'a base that bypasses the lock' \
+		"sed -i 's#^FROM .* AS runtime\$#FROM gcr.io/distroless/static-debian13:nonroot AS runtime#' Dockerfile" \
+		'must build FROM'
+	assert_runtime_policy_rejects 'a missing USER' \
+		"sed -i '/^USER nonroot:nonroot\$/d' Dockerfile" \
+		'must set a non-root USER'
+	assert_runtime_policy_rejects 'USER root' \
+		"sed -i 's/^USER nonroot:nonroot\$/USER root /' Dockerfile" \
+		'must set a non-root USER'
+	assert_runtime_policy_rejects 'USER 00' \
+		"sed -i 's/^USER nonroot:nonroot\$/USER 00:0/' Dockerfile" \
+		'must set a non-root USER'
+	assert_runtime_policy_rejects 'an unverifiable USER variable' \
+		"sed -i 's/^USER nonroot:nonroot\$/USER \${APP_UID}/' Dockerfile" \
+		'must set a non-root USER'
+	assert_runtime_policy_rejects 'root USER in a differently cased stage' \
+		"sed -i -e 's/ AS runtime\$/ as Runtime/' -e 's/^USER nonroot:nonroot\$/user root/' Dockerfile" \
+		'must set a non-root USER'
+	assert_runtime_policy_rejects 'a shell-form ENTRYPOINT' \
+		"sed -i 's#^ENTRYPOINT .*#ENTRYPOINT /app#' Dockerfile" \
+		'must use an exec-form ENTRYPOINT'
+	# A blank selector leaves an empty lock; make build refuses to opt in then.
+	fixture_dir=$(mktemp -d)
+	sed -e "s#^DEV_DISTROLESS_STATIC_IMAGE_LOCK=.*#DEV_DISTROLESS_STATIC_IMAGE_LOCK=''#" config/lockfile.cfg >"${fixture_dir}/lockfile.cfg"
+	check_runtime_image_policy Dockerfile "${fixture_dir}/lockfile.cfg" || fail 'runtime policy should accept an empty lock from a blank selector'
+	rm -rf "${fixture_dir}"
+	# Derived repositories may remove the stage entirely.
+	fixture_dir=$(mktemp -d)
+	printf '%s\n' 'FROM debian:trixie-slim AS dev' >"${fixture_dir}/Dockerfile"
+	check_runtime_image_policy "${fixture_dir}/Dockerfile" config/lockfile.cfg || fail 'runtime policy should skip Dockerfiles without a runtime stage'
+	rm -rf "${fixture_dir}"
 }
 
 # The build, lint, test, and run commands are configurable, so check what each
@@ -1567,6 +1719,9 @@ template | smoke | _regression)
 		sh scripts/test-release.sh
 		test_optional_k8s_update_compat
 		test_update_package_snapshot_refresh
+		test_update_gcr_digest
+		test_runtime_image_build
+		test_runtime_image_policy
 		test_optional_k8s_scan_skip
 		test_scan_scanner_arguments
 		test_dist_scanner_arguments
@@ -1576,8 +1731,22 @@ template | smoke | _regression)
 		test_k8s_test_local_uses_kubeconfig_and_server_dry_run
 		exit 0
 	fi
-	# Exercise the shipped build/test code unchanged with the current image locks.
-	make build
+	# Exercise the shipped build/test code with the current image locks. The
+	# layered config only adds the opt-in runtime image, so one `make build` also
+	# builds it for real (the fake-docker tests cannot catch a broken `go build` or
+	# base image). Then check it is non-root, holds only the binary, and starts
+	# the example.
+	runtime_check_image='kc-template-runtime-check:local'
+	printf '%s\n' '. ./config/project.cfg' "PROJECT_RUNTIME_IMAGE='${runtime_check_image}'" >"${TMPDIR}/template-runtime.cfg"
+	make build PROJECT_CFG_FILE="${TMPDIR}/template-runtime.cfg"
+	[ "$(docker image inspect --format '{{.Config.User}}' "${runtime_check_image}")" = 'nonroot:nonroot' ] || fail 'runtime image should run as nonroot:nonroot'
+	[ "$(docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges:true "${runtime_check_image}")" = 'Hello, World!' ] || fail 'runtime image should start the example'
+	runtime_container=$(docker create "${runtime_check_image}")
+	docker export "${runtime_container}" | tar -t >"${TMPDIR}/template-runtime-files.txt"
+	docker rm "${runtime_container}" >/dev/null
+	grep -qx 'app' "${TMPDIR}/template-runtime-files.txt" || fail 'runtime image should contain the /app binary'
+	! grep -Eq '(^build/|\.go$|^go\.mod$)' "${TMPDIR}/template-runtime-files.txt" || fail 'runtime image must not contain source or tests'
+	docker image rm "${runtime_check_image}" >/dev/null
 	if template_skip_src_tests; then
 		printf '%s\n' 'Skipping nested src tests (TEMPLATE_SKIP_SRC_TESTS=true); they are covered by the test-code job.'
 	else

@@ -103,3 +103,24 @@ GitHub Actions should stay thin wrappers around `make` targets. If a workflow
 needs new behavior, add it to the relevant script or target first, then call that
 same entrypoint from CI. This prevents a command from passing locally while the
 workflow runs a different implementation.
+
+## Optional Go Runtime Image
+
+- Off by default. Set `PROJECT_RUNTIME_IMAGE` in `config/project.cfg` (for
+  example `my-app-runtime:local`) and `make build` also builds the Dockerfile
+  `runtime` stage into that tag.
+- The image holds only the static example binary on
+  `gcr.io/distroless/static-debian13:nonroot`.
+  - It runs as `nonroot:nonroot` with an exec-form `ENTRYPOINT` and has no shell.
+  - Source and tests stay in the build stage; `docker build` does not run tests.
+- The base is pinned by digest through `DEV_DISTROLESS_STATIC_IMAGE_LOCK`, and
+  the Go compiler through `DEV_GO_IMAGE_LOCK`. With the image enabled,
+  `make build` fails before building anything if either lock is missing or not
+  digest-pinned.
+- The runtime stages sit above `dev` in the `Dockerfile`, so a plain
+  `docker build .` still produces the dev image.
+- `make scan` checks that the `runtime` stage builds `FROM` the
+  `RUNTIME_BASE_IMAGE` arg, keeps a digest-pinned lock (or an empty one from a
+  blank selector), a non-root `USER`, and an exec-form `ENTRYPOINT`. Deleting
+  the stage skips the check.
+- Try it: `docker run --rm my-app-runtime:local`.

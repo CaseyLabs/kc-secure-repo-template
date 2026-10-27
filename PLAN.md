@@ -1,6 +1,6 @@
 # Language-Neutral Workflow and Runtime Image Plan
 
-Status: not started. Replaces `feat/dockerfile-templates` (02459d7), which is
+Status: milestones 1–2 done (unmerged branches). Replaces `feat/dockerfile-templates` (02459d7), which is
 31 commits behind `main`, conflicts in 5 files, and has design bugs (see the
 review notes at the end).
 
@@ -177,7 +177,9 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
 
 - [x] D1 / D2 confirmed
 - [x] 1. Configurable workflow commands (2026-10-26; `test_workflow_command_overrides`; template test, `make test`, `make scan` passed)
-- [ ] 2. Optional Go runtime image
+- [x] 2. Optional Go runtime image (2026-10-26; `test_update_gcr_digest`, `test_runtime_image_build`, `test_runtime_image_policy`, real runtime build in template mode; template test, `make test`, `make scan` passed)
+- [ ] Follow-up: lock formats differ by registry (ghcr.io drops the tag, gcr.io and Docker Hub keep it); unify in `resolve_image` as a separate change
+- [ ] Follow-up: `make scan` could check every non-empty `*_LOCK` is digest-pinned and share one pin helper with `scan.sh`/`dist.sh`/`build.sh`
 - [ ] 3. Opt-in runtime image vulnerability scan
 - [ ] 4. Python and Node.js adaptation guidance
 - [ ] 5. Retire the old branch
@@ -188,6 +190,13 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   `PROJECT_RUN_COMMAND` cannot fail the make target (same as before). The test
   covers `run.sh` failing when `docker run` fails; docs point to `make status`
   and `make logs`.
+
+- 2026-10-26 (M2): BuildKit rejects a blank `FROM` in any stage, even one it
+  does not build ("base name should not be blank"), so the runtime stages keep
+  fallback tags. `make build` always passes the digest locks and refuses to
+  build the runtime image without them.
+- 2026-10-26 (M2): A plain `docker build .` builds the last stage, so the
+  runtime stages sit above `dev` to keep the default image unchanged.
 
 ## Decision Log
 
@@ -206,6 +215,25 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   `feat/workflow-configurable-commands` (M1, unmerged, commit d968a2b) rather than
   `main`. Rebase it onto `main` once M1's PR merges.
 
+- 2026-10-26 (M2 design): Opt-in is `PROJECT_RUNTIME_IMAGE` in `project.cfg`
+  (blank = off, image tag to build when set). `build.sh` then also builds
+  `--target runtime`. The `dev` build and its args are untouched. The Go builder
+  stage reuses `DEV_GO_IMAGE_LOCK` via a `RUNTIME_BUILD_IMAGE` arg. The policy
+  check lives in `scripts/workflow-policy.sh` (already in the manifests) so no
+  new script has to be added to the template manifests.
+
+- 2026-10-26 (M2 review): The scan policy accepts an empty distroless lock (a
+  blank selector, which `update.sh` supports); a non-empty lock must be
+  digest-pinned and the stage must build `FROM ${RUNTIME_BASE_IMAGE...}`.
+  `build.sh` checks both the Go and distroless locks before any docker build.
+- 2026-10-26 (M2 review): Declined renaming `DEV_DISTROLESS_STATIC_IMAGE` to a
+  role name (the plan fixes the name), Go build-cache mounts, and parallel
+  dev/runtime builds (simplicity over seconds).
+
+- 2026-10-26 (handoff, user decision): Branch milestone 3 from
+  `feat/runtime-go-image` (M2, unmerged, commit 8a26aed), stacked on M1. Rebase
+  the stack onto `main` as the M1 and M2 PRs merge.
+
 ## Outcomes & Retrospective
 
 - M1: `PROJECT_{BUILD,LINT,TEST,RUN}_COMMAND` shipped with a fake-docker
@@ -213,3 +241,10 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   commands, and failure propagation. Fixed eight `/code-review` findings
   (fallback semantics, env leak, GNU-only grep, a weak assertion, untested run
   failure, stale summaries and comments, a wrong fail message); declined two.
+- M2: Opt-in `PROJECT_RUNTIME_IMAGE` builds a distroless, nonroot, exec-form
+  runtime stage from digest locks; `update.sh` resolves gcr.io and now shares
+  one registry token and manifest helper across Docker Hub, GHCR, and gcr.io.
+  Fixed eight `/code-review` findings (policy bypass via `FROM`, blank-selector
+  scan failure, default-target change, unchecked Go lock, no real runtime build
+  in CI, case and whitespace gaps, late lock check, misplaced comment); declined
+  the mutable fallback tags (BuildKit needs them).

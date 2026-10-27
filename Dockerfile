@@ -4,7 +4,42 @@
 # same Dockerfile can be reused across derived repositories.
 ARG DEV_BASE_IMAGE
 ARG DEV_PACKAGE_SNAPSHOT
+# Used only by the optional `runtime` stages at the bottom. `FROM` can only read
+# ARGs declared before the first `FROM`, so they live here.
+ARG RUNTIME_BUILD_IMAGE
+ARG RUNTIME_BASE_IMAGE
 
+# --- Optional runtime image (opt-in) ---------------------------------------
+# These two stages are only built when a build targets `runtime`, which
+# `make build` does when `PROJECT_RUNTIME_IMAGE` is set in `config/project.cfg`.
+# The `dev` target below never uses them, so a default build is unchanged.
+# The fallback tags only exist because BuildKit rejects a blank `FROM` in any
+# stage, even one it does not build. `make build` always passes the digest locks
+# and refuses to build the runtime image without them.
+# They sit above `dev` on purpose: a plain `docker build .` with no `--target`
+# builds the last stage, which must stay the dev image.
+
+# Stage 1: compile the example in the pinned Go image. Nothing from this stage
+# reaches the final image except the compiled binary.
+FROM ${RUNTIME_BUILD_IMAGE:-golang:trixie} AS runtime-build
+WORKDIR /build
+COPY src/ ./
+# CGO_ENABLED=0 produces a static binary that runs on the shell-less `static`
+# distroless base. `-trimpath` and `-buildvcs=false` keep the output
+# reproducible. Tests are not run here; `make test` covers them.
+RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /out/app ./cmd/app
+
+# Stage 2: copy only the binary into the minimal distroless base. The `:nonroot`
+# tag already defaults to an unprivileged user; `USER` below states it
+# explicitly so the policy check and reviewers can see it.
+FROM ${RUNTIME_BASE_IMAGE:-gcr.io/distroless/static-debian13:nonroot} AS runtime
+COPY --from=runtime-build /out/app /app
+USER nonroot:nonroot
+# Exec form (JSON array): distroless has no shell, and exec form keeps the app
+# as PID 1 so it receives stop signals directly.
+ENTRYPOINT ["/app"]
+
+# --- Development and CI image -----------------------------------------------
 # Start from the configured base image. The default keeps this template usable
 # even if a build does not explicitly override the value.
 FROM ${DEV_BASE_IMAGE:-debian:trixie-slim} AS dev
