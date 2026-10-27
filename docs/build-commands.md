@@ -141,6 +141,11 @@ workflow runs a different implementation.
     `RUNTIME_BUILD_IMAGE` arg, and the `runtime` stage may only
     `COPY --from=runtime-build`.
   - Deleting the `runtime` stage skips the check.
+- A derived repository that sets `PROJECT_BUILD_TARGET` to a stage other than
+  `dev` (for example one built `FROM runtime`) needs both locks digest-pinned:
+  `make scan` and `make dist` fail before building anything otherwise, and pass
+  each set lock as a `RUNTIME_*` build arg for every target (a blank lock, allowed
+  only for `dev`, is omitted so the Dockerfile default applies).
 - Try it: `docker run --rm my-app-runtime:local`.
 
 ## Optional Image Vulnerability Scan
@@ -152,8 +157,8 @@ workflow runs a different implementation.
   - fails on HIGH or CRITICAL findings (`--exit-code 1 --severity HIGH,CRITICAL`)
   - deletes the tarball and the scan image whether the scan passes, fails, or is interrupted
   - exits non-zero after cleanup when interrupted (HUP, INT, or TERM)
-- The scan image always gets the `RUNTIME_*` build args from `DEV_GO_IMAGE_LOCK` and `DEV_DISTROLESS_STATIC_IMAGE_LOCK`, so a scan target derived `FROM runtime` never falls back to the mutable default tags.
-  - Any scan target other than `dev` needs both locks digest-pinned.
+- Every image `make scan` builds, the scan image and the project image (`PROJECT_BUILD_TARGET`, default `dev`), gets the `RUNTIME_*` build args from `DEV_GO_IMAGE_LOCK` and `DEV_DISTROLESS_STATIC_IMAGE_LOCK`, so a target derived `FROM runtime` never falls back to the mutable default tags.
+  - Any target other than `dev` needs both locks digest-pinned; `make scan` checks them before building anything.
   - A failed scan image removal prints a warning and does not change the scan result.
 - Unlike the other scanners, this one needs network access for Trivy's vulnerability database, so Trivy gets only the read-only tarball.
 - Values other than `true` or `false` fail the scan.

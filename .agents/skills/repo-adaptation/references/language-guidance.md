@@ -41,7 +41,8 @@ Use this reference when adding or revising optional language-specific guidance f
 - Variable names stay as the template defines them, even when the stack is not Go:
   - `DEV_GO_IMAGE` is the dev and builder image for every stack (the name is historical). Point it at the stack's image, for example `node:24-trixie` or `python:3.13-trixie`.
   - `DEV_DISTROLESS_STATIC_IMAGE` is the runtime base. Point it at the matching distroless image and keep the `:nonroot` tag.
-  - `RUNTIME_BUILD_IMAGE` and `RUNTIME_BASE_IMAGE` receive those two digest-locked values from `scripts/build.sh`.
+  - `RUNTIME_BUILD_IMAGE` and `RUNTIME_BASE_IMAGE` receive those two digest-locked values from `scripts/build.sh`, `scripts/scan.sh`, and `scripts/dist.sh`.
+  - A `PROJECT_BUILD_TARGET` other than `dev` needs both locks digest-pinned, or `make scan` and `make dist` refuse to build.
 - The runtime stage must keep what `make scan` checks: `FROM ${RUNTIME_BASE_IMAGE...}`, a non-root `USER`, and an exec-form `ENTRYPOINT`.
 - Commands run as `sh -eu -c` in the dev container from `/workspace`, so each example uses `cd src &&`.
 
