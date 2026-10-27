@@ -16,6 +16,9 @@ ARG RUNTIME_BASE_IMAGE
 # The fallback tags only exist because BuildKit rejects a blank `FROM` in any
 # stage, even one it does not build. `make build` always passes the digest locks
 # and refuses to build the runtime image without them.
+# The legacy builder (`DOCKER_BUILDKIT=0`) builds every stage above the target,
+# so it would pull these fallback tags even for `--target dev`; the build, scan,
+# and dist scripts refuse it.
 # They sit above `dev` on purpose: a plain `docker build .` with no `--target`
 # builds the last stage, which must stay the dev image.
 
@@ -23,6 +26,10 @@ ARG RUNTIME_BASE_IMAGE
 # reaches the final image except the compiled binary.
 FROM ${RUNTIME_BUILD_IMAGE:-golang:trixie} AS runtime-build
 WORKDIR /build
+# Use only the Go toolchain in the pinned image. Without this, raising the `go`
+# or `toolchain` line in `src/go.mod` makes `go build` download a newer
+# toolchain during the build, bypassing the digest lock.
+ENV GOTOOLCHAIN=local
 COPY src/ ./
 # CGO_ENABLED=0 produces a static binary that runs on the shell-less `static`
 # distroless base. `-trimpath` and `-buildvcs=false` keep the output

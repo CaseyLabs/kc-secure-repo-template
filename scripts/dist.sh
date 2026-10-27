@@ -21,6 +21,9 @@ env_enable_sbom=${ENABLE_SBOM-}
 env_enable_grype=${ENABLE_GRYPE-}
 env_grype_fail_on=${GRYPE_FAIL_ON-}
 . "${project_cfg_file}"
+# Refuse the legacy builder before any docker call (see require_buildkit).
+. ./scripts/workflow-policy.sh
+require_buildkit "make dist"
 RELEASE_PUBLICATION=${publication_requested}
 export RELEASE_PUBLICATION
 # Workflow variables are the effective release settings even if a derived

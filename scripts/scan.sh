@@ -71,6 +71,7 @@ trap cleanup EXIT INT TERM HUP
 . ./scripts/workflow-policy.sh
 . ./scripts/commit-policy.sh
 . ./scripts/agent-policy.sh
+require_buildkit "make scan"
 
 # Host-only checks run first: they need only sh, git, grep, sed, and awk, so a
 # PR that breaks them fails in seconds instead of after the image build and

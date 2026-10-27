@@ -44,12 +44,15 @@ docker_home=${DOCKER_HOME:-/tmp/kc-template-home}
 docker_cache_home=${DOCKER_CACHE_HOME:-${docker_home}/.cache}
 docker_home_source=${DOCKER_HOME_SOURCE:-$(pwd)/.cache/docker-home}
 docker_tmpdir=${DOCKER_TMPDIR:-$(pwd)/.cache/docker-tmp}
+
+# Refuse the legacy builder before touching the checkout (see require_buildkit).
+. ./scripts/workflow-policy.sh
+require_buildkit "make build"
 mkdir -p "${docker_home_source}" "${docker_tmpdir}"
 
 # Opt-in distroless runtime image. It does not depend on the dev image, so it is
 # built first: the lock checks then fail fast, before the slower dev build.
 # Both locks must be digest-pinned, so the build never falls back to a mutable tag.
-. ./scripts/workflow-policy.sh
 if [ -n "${project_runtime_image}" ]; then
 	require_pinned_lock DEV_GO_IMAGE_LOCK "${DEV_GO_IMAGE_LOCK:-}" "build PROJECT_RUNTIME_IMAGE"
 	require_pinned_lock DEV_DISTROLESS_STATIC_IMAGE_LOCK "${DEV_DISTROLESS_STATIC_IMAGE_LOCK:-}" "build PROJECT_RUNTIME_IMAGE"

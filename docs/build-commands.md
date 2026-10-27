@@ -117,12 +117,21 @@ workflow runs a different implementation.
   the Go compiler through `DEV_GO_IMAGE_LOCK`. With the image enabled,
   `make build` fails before building anything if either lock is missing or not
   digest-pinned.
+  - The build stage sets `GOTOOLCHAIN=local`, so raising the `go` line in
+    `src/go.mod` cannot download a newer toolchain; bump the lock instead.
 - The runtime stages sit above `dev` in the `Dockerfile`, so a plain
   `docker build .` still produces the dev image.
+  - `make build`, `make scan`, and `make dist` refuse `DOCKER_BUILDKIT=0` and
+    otherwise run Docker with `DOCKER_BUILDKIT=1`: the legacy builder builds
+    every stage above the target, including the runtime stages from their
+    mutable fallback tags.
 - `make scan` checks that the `runtime` stage builds `FROM` the
   `RUNTIME_BASE_IMAGE` arg, keeps a digest-pinned lock (or an empty one from a
-  blank selector), a non-root `USER`, and an exec-form `ENTRYPOINT`. Deleting
-  the stage skips the check.
+  blank selector), a non-root `USER` and group, and an exec-form `ENTRYPOINT`.
+  - It also requires a `runtime-build` stage built `FROM` the
+    `RUNTIME_BUILD_IMAGE` arg, and the `runtime` stage may only
+    `COPY --from=runtime-build`.
+  - Deleting the `runtime` stage skips the check.
 - Try it: `docker run --rm my-app-runtime:local`.
 
 ## Optional Image Vulnerability Scan
