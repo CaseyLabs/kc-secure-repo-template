@@ -250,3 +250,33 @@ check_runtime_image_policy() {
 		;;
 	esac
 }
+
+# Print the last value a Dockerfile stage assigns to an ENV key, or nothing.
+# Handles `ENV KEY=value` (also with several keys and quotes) and the legacy
+# `ENV KEY value` form. Comment lines are ignored, and a later ENV overrides an
+# earlier one, matching how Docker applies them.
+print_dockerfile_stage_env() {
+	print_dockerfile_stage "$1" "$2" | awk -v key="$3" '
+		tolower($1) == "env" {
+			if (NF == 3 && $2 == key) value = $3
+			for (i = 2; i <= NF; i++) {
+				if (index($i, key "=") == 1) value = substr($i, length(key) + 2)
+			}
+		}
+		END { gsub(/["\047]/, "", value); print value }
+	'
+}
+
+# The dev image must set GOTOOLCHAIN=local itself. The official golang images
+# set it today, but stating it in the Dockerfile keeps `make build`/`make test`
+# on the DEV_GO_IMAGE_LOCK toolchain even if the upstream default changes.
+# Dockerfiles without a `dev` stage are skipped.
+check_dev_image_policy() {
+	dev_dockerfile=${1:-Dockerfile}
+
+	[ -n "$(print_dockerfile_stage dev "${dev_dockerfile}")" ] || return 0
+	if [ "$(print_dockerfile_stage_env dev "${dev_dockerfile}" GOTOOLCHAIN)" != local ]; then
+		printf 'dev stage in %s must set ENV GOTOOLCHAIN=local\n' "${dev_dockerfile}" >&2
+		return 1
+	fi
+}

@@ -352,10 +352,13 @@ check_workflow_permissions_policy
 check_workflow_trigger_policy
 check_workflow_scanner_suppressions
 
-printf '\n==> Check runtime image policy\n'
+printf '\n==> Check runtime and dev image policy\n'
 # The optional distroless runtime stage must stay digest-pinned, non-root, and
 # exec-form so it cannot silently weaken the image when the Dockerfile changes.
 check_runtime_image_policy
+# The dev image must pin Go to its own toolchain (GOTOOLCHAIN=local), so a newer
+# `go` line in src/go.mod fails instead of downloading an unlocked toolchain.
+check_dev_image_policy
 
 printf '\n==> Check Claude settings\n'
 # Keep the shared Claude deny rules in place. The settings check parses JSON with jq, which the dev image provides; running
