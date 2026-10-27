@@ -230,6 +230,10 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   role name (the plan fixes the name), Go build-cache mounts, and parallel
   dev/runtime builds (simplicity over seconds).
 
+- 2026-10-26 (handoff, user decision): Branch milestone 3 from
+  `feat/runtime-go-image` (M2, unmerged, commit 8a26aed), stacked on M1. Rebase
+  the stack onto `main` as the M1 and M2 PRs merge.
+
 ## Outcomes & Retrospective
 
 - M1: `PROJECT_{BUILD,LINT,TEST,RUN}_COMMAND` shipped with a fake-docker
