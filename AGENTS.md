@@ -45,7 +45,7 @@ Use a repo-local skill only when a matching skill actually exists in `.agents/sk
 
 Typical routing:
 
-- Use `repo-adaptation` when adapting this template or a forked repository to a real project, inspecting inserted `src/` code, revising customization points, or adding optional Go, Node.js, SQL, or polyglot guidance.
+- Use `repo-adaptation` when adapting this template or a forked repository to a real project, inspecting inserted `src/` code, revising customization points, or adding optional Go, Node.js, Python, SQL, or polyglot guidance.
 - Use `workflow-validation` when changing `Makefile`, `Dockerfile`, `scripts/`, tests, packaging manifests, CI, or release workflows.
 - Use `github-hardening` when updating GitHub-side hardening guidance, required repository settings, or the Terraform-backed implementation under `config/infra`.
 - Use `release-integrity` when working on SBOMs, attestations, artifact scanning, signing guidance, or release workflow safety.

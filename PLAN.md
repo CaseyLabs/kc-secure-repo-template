@@ -187,7 +187,13 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
 - [ ] Follow-up: share the runtime build args (`RUNTIME_BUILD_IMAGE`/`RUNTIME_BASE_IMAGE`) between `build.sh` and `scan.sh`, and a `run_trivy` helper for the three hardened Trivy runs
 - [ ] Follow-up: `build.sh` hardcodes `-f Dockerfile` while `scan.sh` uses `PROJECT_DOCKERFILE` (pre-existing)
 - [ ] Follow-up: `scan.sh` signal traps run cleanup but do not exit (pre-existing)
-- [ ] 4. Python and Node.js adaptation guidance
+- [x] 4. Python and Node.js adaptation guidance (2026-10-26; docs only; acceptance-checker passed both criteria; distroless entrypoints and Python 3.13.5 / Node v24 confirmed by running the images; `make scan` passed)
+- [ ] Follow-up (M4 review, unverified, from M3): `scan.sh` cleanup trap runs `docker image rm` unguarded after a failed scan-target build, so set -e can abort cleanup before the k8s temp files are removed
+- [ ] Follow-up (M4 review, from M3): `scan.sh` passes `RUNTIME_*` build args only when `PROJECT_SCAN_IMAGE_TARGET` is literally `runtime`; a derived stage `FROM runtime` falls back to mutable tags
+- [ ] Follow-up (M4 review, from M2): runtime `USER` policy strips the group, so `USER nonroot:0` passes
+- [ ] Follow-up (M4 review, from M2): set `GOTOOLCHAIN=local` in the `runtime-build` stage so a raised `go` directive cannot download a toolchain
+- [ ] Follow-up (M4 review, from M2): with the legacy builder (`DOCKER_BUILDKIT=0`), `--target dev` also builds the runtime stages from mutable fallback tags
+- [ ] Follow-up (M4 review, from M1): src-mode test summary drops "build" though the default test command still builds; shared template-fixture helper in `test.sh`
 - [ ] 5. Retire the old branch
 
 ## Surprises & Discoveries
@@ -203,6 +209,12 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   build the runtime image without them.
 - 2026-10-26 (M2): A plain `docker build .` builds the last stage, so the
   runtime stages sit above `dev` to keep the default image unchanged.
+- 2026-10-26 (M4): The template's `.dockerignore` `node_modules` entry is
+  root-anchored, so it does not exclude `src/node_modules`. The guidance tells
+  derived repos to add `**/node_modules` and `src/.deps`.
+- 2026-10-26 (M4): Confirmed by running the images: `distroless/python3-debian13`
+  has Python 3.13.5 at `/usr/bin/python3`; `distroless/nodejs24-debian13` has
+  Node v24 at `/nodejs/bin/node`.
 
 - 2026-10-26 (M3): A real opt-in scan of the default runtime image fails: Trivy
   reports 14 HIGH Go stdlib CVEs in the example binary built with golang 1.26.3
@@ -253,6 +265,13 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   `GRYPE_FAIL_ON`); a shared boolean validator and test-fixture helper declined
   as out of scope.
 
+- 2026-10-26 (M4): Python joins the `repo-adaptation` scope (guidance only).
+  Examples keep the template's variable names; `DEV_GO_IMAGE` is documented as
+  the builder for every stack rather than renamed. Template `Dockerfile`,
+  `project.cfg`, and ignore files are unchanged; derived repos apply the
+  examples. `/code-review` ran branch-wide (`main...HEAD`); out-of-milestone
+  findings went to Progress as follow-ups.
+
 ## Outcomes & Retrospective
 
 - M1: `PROJECT_{BUILD,LINT,TEST,RUN}_COMMAND` shipped with a fake-docker
@@ -274,3 +293,9 @@ Likely files: `.agents/skills/repo-adaptation/references/language-guidance.md`,
   writable mount, weak failure test, shared tag, noisy off output) and applied
   four `/simplify` cleanups (one docker call, shared pin helper, ignore file,
   merged off-mode test); deferred five pre-existing or out-of-scope items.
+- M4: Node.js and Python sections in the `repo-adaptation` language guidance
+  (config values, runtime stage sketches, lockfile/hash rules, `PYTHONPATH` in
+  both places), Python added to skill scope and routing, pointer from
+  `docs/customize-template.md`. Fixed two `/code-review` findings (host
+  `node_modules` and `.deps` leaking into the runtime image via `COPY src/`);
+  logged six out-of-milestone findings as follow-ups.
