@@ -639,6 +639,112 @@ EOF
 	rm -rf "${workdir}"
 }
 
+# Regression tests for #90: a signal stops the scan after cleanup, cleanup keeps
+# going when the scan image cannot be removed, and every scan target other than
+# dev gets the digest-pinned RUNTIME_* build args.
+test_scan_cleanup_and_build_args() {
+	workdir=$(mktemp -d)
+	root_dir=$(pwd)
+
+	(
+		cd "${workdir}"
+		(cd "${root_dir}" && sh scripts/template.sh files) >files.txt
+		tar -C "${root_dir}" -cf fixture.tar -T files.txt
+		tar -xf fixture.tar
+		rm fixture.tar files.txt
+		mkdir -p fake-bin scan-tmp
+		# Stub the Helm render so the scan creates its k8s temp files without a
+		# real Helm container; the cleanup check below needs those files to exist.
+		cat >scripts/k8s.sh <<'SCRIPT'
+#!/bin/sh
+set -eu
+mkdir -p .tmp/k8s/rendered
+printf '%s\n' 'kind: Service' >.tmp/k8s/rendered/app.yaml
+printf '%s\n' "K8S_RENDER_FILE='.tmp/k8s/rendered/app.yaml'" >"${K8S_METADATA_FILE}"
+SCRIPT
+		# FAKE_BUILD_FAIL fails the scan-target build, FAKE_IMAGE_RM_FAIL fails the
+		# scan image removal, and FAKE_TRIVY_BLOCK holds the Trivy image scan until
+		# the test releases it, so a signal can arrive mid-scan.
+		cat >fake-bin/docker <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>docker.log
+if [ "$1" = save ]; then
+	: >"$3"
+fi
+case " $* " in
+*' --target dev '*) ;;
+*' --target '*) [ -z "${FAKE_BUILD_FAIL:-}" ] || exit 1 ;;
+esac
+case " $* " in
+' image rm '*) [ -z "${FAKE_IMAGE_RM_FAIL:-}" ] || exit 1 ;;
+*' image --input '*)
+	if [ -n "${FAKE_TRIVY_BLOCK:-}" ]; then
+		: >trivy-started
+		i=0
+		while [ ! -f trivy-release ] && [ "${i}" -lt 300 ]; do
+			sleep 0.1
+			i=$((i + 1))
+		done
+	fi
+	;;
+esac
+exit 0
+EOF
+		chmod +x fake-bin/docker
+		cp config/project.cfg config/project.cfg.test
+		printf '%s\n' 'PROJECT_SCAN_IMAGE_VULNS=true' >>config/project.cfg.test
+		. ./config/lockfile.cfg
+
+		# A TERM mid-scan runs cleanup and then exits non-zero instead of carrying on.
+		scan_status=0
+		PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" FAKE_TRIVY_BLOCK=1 sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-signal.txt 2>&1 &
+		scan_pid=$!
+		i=0
+		while [ ! -f trivy-started ] && [ "${i}" -lt 300 ]; do
+			sleep 0.1
+			i=$((i + 1))
+		done
+		[ -f trivy-started ] || fail 'signal test should reach the Trivy image scan'
+		kill -TERM "${scan_pid}"
+		: >trivy-release
+		wait "${scan_pid}" || scan_status=$?
+		[ "${scan_status}" -eq 143 ] || fail 'scan should exit 143 after a TERM signal'
+		tail -n 1 docker.log | grep -Fq 'image rm ' || fail 'scan should run cleanup and stop after a TERM signal'
+		[ -z "$(find scan-tmp -name 'scan-image.*' -o -name 'k8s-scan-*')" ] || fail 'scan should delete its temp files after a TERM signal'
+
+		# A failed scan-target build plus a failed image removal still removes
+		# every temp file, and the scan keeps the build failure as its result.
+		rm -f docker.log
+		if PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" FAKE_BUILD_FAIL=1 FAKE_IMAGE_RM_FAIL=1 sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-rm-fail.txt 2>&1; then
+			fail 'scan should fail when the scan-target build fails'
+		fi
+		grep -Fq 'image rm ' docker.log || fail 'cleanup should try to remove the scan image'
+		grep -Fq 'warning: could not remove scan image' ${TMPDIR}/template-scan-rm-fail.txt || fail 'cleanup should report a failed scan image removal'
+		[ -z "$(find scan-tmp -name 'k8s-scan-*')" ] || fail 'cleanup should remove the k8s temp files even when image removal fails'
+
+		# A derived stage (any target but dev) gets the pinned RUNTIME_* args.
+		rm -f docker.log
+		printf '%s\n' "PROJECT_SCAN_IMAGE_TARGET='derived'" >>config/project.cfg.test
+		PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-derived.txt
+		derived_build=$(grep -F -- '--target derived' docker.log) || fail 'scan should build the configured derived target'
+		printf '%s\n' "${derived_build}" | grep -Fq -- "RUNTIME_BUILD_IMAGE=${DEV_GO_IMAGE_LOCK}" || fail 'a derived scan target should get the pinned Go build lock'
+		printf '%s\n' "${derived_build}" | grep -Fq -- "RUNTIME_BASE_IMAGE=${DEV_DISTROLESS_STATIC_IMAGE_LOCK}" || fail 'a derived scan target should get the pinned distroless lock'
+		# The pin requirement covers derived targets too.
+		printf '%s\n' "DEV_GO_IMAGE_LOCK=''" >>config/project.cfg.test
+		if PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-derived-blank.txt 2>&1; then
+			fail 'a derived scan target should require a digest-pinned Go build lock'
+		fi
+		grep -Fq 'DEV_GO_IMAGE_LOCK must be pinned by digest' ${TMPDIR}/template-scan-derived-blank.txt || fail 'scan should name the unpinned lock for a derived target'
+
+		# The dev target needs no runtime locks, so blank selectors still scan it.
+		printf '%s\n' "PROJECT_SCAN_IMAGE_TARGET='dev'" "DEV_DISTROLESS_STATIC_IMAGE_LOCK=''" >>config/project.cfg.test
+		PATH="${workdir}/fake-bin:${PATH}" DOCKER_TMPDIR="${workdir}/scan-tmp" sh ./scripts/scan.sh config/project.cfg.test >${TMPDIR}/template-scan-dev-blank.txt 2>&1 || fail 'scan should build the dev target without runtime locks'
+		# Blank locks reach the build as empty args, so the Dockerfile defaults apply.
+		grep -F -- '-t kc-secure-template-vuln-scan:local' docker.log | tail -n 1 | grep -Fq -- 'RUNTIME_BASE_IMAGE= ' || fail 'a blank lock should reach the dev scan build as an empty arg'
+	)
+	rm -rf "${workdir}"
+}
+
 test_optional_k8s_scan_skip() {
 	workdir=$(mktemp -d)
 	root_dir=$(pwd)
@@ -1901,6 +2007,7 @@ template | smoke | _regression)
 		test_optional_k8s_scan_skip
 		test_scan_scanner_arguments
 		test_scan_image_vulns
+		test_scan_cleanup_and_build_args
 		test_dist_scanner_arguments
 		test_workflow_command_overrides
 		test_k8s_shell_inputs_are_not_executed
